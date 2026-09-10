@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+
+# Project runtime data (created by the CLI)
+data/
+!data/.gitkeep
+!data/README.md
+
+# Local config / secrets
+.env
+.env.*
+!.env.example
+config/config.yaml
+!config/config.yaml.example
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# LLM response caches (optional large artefacts)
+.cache/

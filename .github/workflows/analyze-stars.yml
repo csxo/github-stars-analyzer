@@ -1,0 +1,124 @@
+name: Analyze Stars
+
+on:
+  schedule:
+    # Weekly, early Monday morning (UTC). Adjust to taste.
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      user:
+        description: "GitHub username (defaults to the authenticated user)"
+        required: false
+        type: string
+      provider:
+        description: "LLM provider (openai_compatible|mock|heuristic)"
+        required: false
+        type: choice
+        default: openai_compatible
+        options:
+          - openai_compatible
+          - mock
+          - heuristic
+      model:
+        description: "LLM model name (overrides LLM_MODEL)"
+        required: false
+        type: string
+      analyze_limit:
+        description: "Cap on repos analyzed in this run (0 = no cap)"
+        required: false
+        type: string
+        default: "0"
+
+# Allow only one concurrent run to avoid clobbering the SQLite WAL.
+concurrency:
+  group: stars-analyzer
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      # Secrets to populate in repository Settings → Secrets and variables →
+      # Actions. `GITHUB_TOKEN` is supplied automatically by Actions and gives
+      # us 1000 req/hr against api.github.com.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+      LLM_MODEL: ${{ vars.LLM_MODEL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Prepare config
+        run: |
+          cp -n config/config.yaml.example config/config.yaml || true
+          cp -n .env.example .env || true
+
+      - name: Restore previous run data
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/stars.db
+            data/cache
+          key: gsa-data-${{ github.run_id }}
+          restore-keys: |
+            gsa-data-
+
+      - name: Sync (collect stars + readmes)
+        run: |
+          gsa sync --user "${{ inputs.user }}" --no-resume || true
+
+      - name: Analyze
+        run: |
+          args=(--provider "${{ inputs.provider || 'openai_compatible' }}")
+          if [ -n "${{ inputs.model }}" ]; then args+=(--model "${{ inputs.model }}"); fi
+          if [ "${{ inputs.analyze_limit }}" != "0" ] && [ -n "${{ inputs.analyze_limit }}" ]; then
+            args+=(--limit "${{ inputs.analyze_limit }}")
+          fi
+          gsa analyze "${args[@]}" || true
+
+      - name: Report
+        run: gsa report
+
+      - name: Status
+        if: always()
+        run: gsa status
+
+      - name: Upload Markdown reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stars-report
+          path: data/output
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload database snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stars-db
+          path: |
+            data/stars.db
+            data/stars.db-wal
+            data/stars.db-shm
+          if-no-files-found: ignore
+          retention-days: 7

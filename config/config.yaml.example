@@ -1,0 +1,56 @@
+# github-stars-analyzer configuration
+# Anything set here can be overridden by environment variables prefixed with GSA_,
+# which themselves can be overridden by a local .env file.
+
+github:
+  # If `user` is empty, we resolve the authenticated user from the token.
+  user: ""
+  token_env: GITHUB_TOKEN
+  base_url: https://api.github.com
+  # Cap on stars pulled in a single sync run. Set to 0 for "no limit".
+  max_stars: 0
+
+cache:
+  db_path: data/stars.db
+  readme_dir: data/cache/readme
+  response_dir: data/cache/llm
+
+llm:
+  # provider: openai_compatible | mock | heuristic
+  provider: openai_compatible
+  base_url: https://api.openai.com/v1
+  api_key_env: LLM_API_KEY
+  model: gpt-4o-mini
+  # Bump this whenever the prompt or analysis schema changes.
+  # Together with README hash + model name, this gates cache invalidation.
+  analysis_version: "1.0.0"
+  temperature: 0.2
+  max_tokens: 1500
+  timeout: 60
+
+pipeline:
+  phases:
+    - collect
+    - readme
+    - analyze
+    - report
+  batch_size: 20
+  request_sleep: 0.05
+  max_retries: 3
+  llm_concurrency: 4
+  http_timeout: 30
+  # Hard ceiling per phase — keeps individual runs bounded so the program
+  # is batch-friendly instead of a single multi-hour job.
+  per_phase_limit: 0     # 0 = unlimited
+
+output:
+  dir: data/output
+  lang: zh-CN             # zh-CN | en
+  # Group similar projects by tag-overlap similarity (Jaccard threshold).
+  similarity_threshold: 0.35
+  # Top-N similar projects to list per repo.
+  top_similar: 5
+
+logging:
+  level: INFO
+  json: false
