@@ -1,0 +1,91 @@
+name: Sync to Repo B
+
+# Pushes the freshly generated `data/output/` to csxo/csxo-stars-analysis
+# using the Contents API + a fine-grained PAT. Skipped automatically when
+# SYNC_TARGET_REPO / SYNC_PAT are not configured.
+
+on:
+  workflow_run:
+    workflows: ["Analyze Stars"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: "Target repo (owner/name), e.g. csxo/csxo-stars-analysis"
+        required: false
+        type: string
+        default: "csxo/csxo-stars-analysis"
+
+# Avoid piling up if analyses run close together.
+concurrency:
+  group: stars-analyzer-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    if: |
+      github.event.workflow_run.conclusion == 'success' ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      # Required: a fine-grained PAT with `contents: write` on TARGET_REPO
+      # only. Create it at https://github.com/settings/tokens?type=beta
+      SYNC_PAT: ${{ secrets.SYNC_PAT }}
+
+    steps:
+      - name: Decide target
+        id: target
+        env:
+          DISPATCHED_TARGET: ${{ github.event.inputs.target_repo }}
+        run: |
+          target="${DISPATCHED_TARGET:-${SYNC_TARGET_REPO:-csxo/csxo-stars-analysis}}"
+          echo "target=${target}" >> "$GITHUB_OUTPUT"
+          echo "Syncing to ${target}"
+
+      - name: Skip if PAT missing
+        if: ${{ env.SYNC_PAT == '' }}
+        run: |
+          echo "::warning::SYNC_PAT secret is not set; skipping cross-repo sync."
+          echo "Create a fine-grained PAT with contents:write on ${{ steps.target.outputs.target }}"
+          echo "and add it under Settings → Secrets → Actions → SYNC_PAT."
+          exit 0
+
+      - name: Skip if PAT looks like the default placeholder
+        if: ${{ env.SYNC_PAT == 'replace-me' || env.SYNC_PAT == 'CHANGEME' }}
+        run: |
+          echo "::warning::SYNC_PAT is a placeholder; skipping."
+          exit 0
+
+      - name: Fetch analysis artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: stars-report
+          path: data/output
+          if-no-files-found: error
+
+      - name: Restore database snapshot (for traceability)
+        uses: actions/download-artifact@v4
+        with:
+          name: stars-db
+          path: data
+          if-no-files-found: warn
+
+      - name: Push to target via Contents API
+        env:
+          TARGET: ${{ steps.target.outputs.target }}
+        run: |
+          python .github/scripts/sync_to_repo_b.py data/output "${TARGET}"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Cross-repo sync" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target: \`${{ steps.target.outputs.target }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Triggered by: \`${{ github.event_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Conclusion: \`${{ github.event.workflow_run.conclusion || 'manual' }}\`" >> "$GITHUB_STEP_SUMMARY"

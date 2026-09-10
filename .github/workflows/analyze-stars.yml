@@ -2,14 +2,22 @@ name: Analyze Stars
 
 on:
   schedule:
-    # Weekly, early Monday morning (UTC). Adjust to taste.
-    - cron: "0 4 * * 1"
+    # Every ~72 hours: 04:00 UTC on days 1, 4, 7, ... 31 of each month.
+    # GitHub's cron has no exact "every N hours" cadence, but `*/3` on
+    # the day field is the closest approximation (and rate-limit-friendly).
+    # Bump this further (e.g. weekly `0 4 * * 1`) if you've stopped
+    # actively curating your stars.
+    # NOTE: GitHub Actions does NOT expose `star` events as a workflow
+    # trigger, so schedule + manual dispatch remain the two available
+    # paths.
+    - cron: "0 4 */3 * *"
   workflow_dispatch:
     inputs:
       user:
-        description: "GitHub username (defaults to the authenticated user)"
+        description: "GitHub username to analyze (default: csxo)"
         required: false
         type: string
+        default: "csxo"
       provider:
         description: "LLM provider (openai_compatible|mock|heuristic)"
         required: false

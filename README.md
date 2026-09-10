@@ -23,6 +23,8 @@ Once your GitHub stars climb past a few dozen, the browser bookmark list becomes
 - 🔁 **Retry + per-item fault tolerance** — one bad repo never blocks the batch
 - 🤖 **GitHub Actions ready** — weekly cron, manual dispatch, artifact upload
 
+> 💡 **Don't want to install Python?** Check the [`prompts/`](./prompts/) directory — it ships three reusable formats so anyone can run the same analysis with any chat AI (Claude, GPT, Cursor, Aider) or directly paste a prompt template. See [`prompts/README.md`](./prompts/README.md) for the 30-second quickstart.
+
 ## 🏗️ Architecture at a glance
 
 ```
@@ -130,8 +132,12 @@ The shipped `.github/workflows/analyze-stars.yml`:
 
 ## 📚 Documentation
 
-- 📘 [`ARCHITECTURE.md`](./ARCHITECTURE.md) — system design, data model, phase orchestration, key decisions
-- 🛠 [`EXTENDING.md`](./EXTENDING.md) — how to add a new LLM, new fields, change the similarity algorithm, etc.
+- 📘 [`ARCHITECTURE.md`](./ARCHITECTURE.md) / [中文](./ARCHITECTURE_CN.md) — system design, data model, phase orchestration, key decisions
+- 🛠 [`EXTENDING.md`](./EXTENDING.md) / [中文](./EXTENDING_CN.md) — how to add a new LLM, new fields, change the similarity algorithm, etc.
+- 🧩 [`prompts/`](./prompts/) — reusable skill / agent / prompt bundle so others can run the same analysis without installing Python (see [`prompts/README.md`](./prompts/README.md))
+- 🌐 **Live site**: <https://csxo.github.io/github-stars-analyzer/prompts/> — browse the prompts as rendered HTML (auto-deployed on every push)
+
+> 🇨🇳 **中文 README**：[`README_CN.md`](./README_CN.md)
 
 
 ## 📄 License

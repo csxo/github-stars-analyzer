@@ -37,3 +37,6 @@ logs/
 
 # LLM response caches (optional large artefacts)
 .cache/
+
+# Local Pages preview build output (source is in prompts/, not site/)
+site/

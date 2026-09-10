@@ -129,3 +129,70 @@ github:
 ```
 
 The client doesn't assume github.com anywhere except in error messages.
+
+## 9. Cross-repo auto-sync (push `data/output/` → sister repo)
+
+Once `gsa report` runs in CI, you usually want the generated Markdown to
+end up in a public, read-only sister repository such as
+`csxo/csxo-stars-analysis`. The repository ships with
+`.github/workflows/sync-to-repo-b.yml` and `.github/scripts/sync_to_repo_b.py`
+that do this via the Contents API — no `git push`, no PAT scope on Repo A.
+
+Enable it in three steps:
+
+1. **Generate a fine-grained PAT**
+
+   Go to <https://github.com/settings/tokens?type=beta> and create a token
+   with these settings:
+
+   * Resource owner: **only** the account that owns the target repo
+   * Repository access: **only** the target repo (e.g. `csxo/csxo-stars-analysis`)
+   * Permissions → Repository → **Contents: Read and write**
+
+   > Classic tokens are fine too, but a fine-grained token limits blast
+   > radius if it ever leaks.
+
+2. **Add it as a Secret on Repo A**
+
+   `Repo A → Settings → Secrets and variables → Actions → New repository secret`
+
+   * Name: `SYNC_PAT`
+   * Value: the token from step 1
+
+3. **(Optional) Override the target**
+
+   The sync defaults to `csxo/csxo-stars-analysis`. To change it, set a
+   *variable* (not a secret) called `SYNC_TARGET_REPO` in the same panel —
+   e.g. `yourname/your-stars-analysis`.
+
+That's it. The next time `Analyze Stars` completes, `Sync to Repo B`
+runs automatically — and you can also trigger it manually from the
+Actions tab.
+
+### How the sync works
+
+* `analyze-stars.yml` runs (now on a 6-hour schedule plus manual).
+* On success, `sync-to-repo-b.yml` triggers via `workflow_run`.
+* It downloads the `stars-report` artifact, then runs
+  `python .github/scripts/sync_to_repo_b.py data/output <target>`.
+* The script reads the **remote git tree** in one API call, computes the
+  **git blob SHA** for every local file, and only `PUT`/`DELETE`s the
+  diff. A typical week (a handful of new stars) produces 5–10 commits,
+  not 700.
+* The script auto-skips paths whose first segment matches
+  `.git,LICENSE,LICENSE_CN.md,README.md,README_CN.md` so the hand-edited
+  top-level files on Repo B are preserved.
+
+### What about real-time star-event triggers?
+
+GitHub Actions does not expose `star.created` / `star.deleted` events as
+workflow triggers (they only fire on webhooks). Your options:
+
+* **6-hour cron** (what's shipped — best effort / balance).
+* **GitHub App** that subscribes to `star` events and calls
+  `POST /repos/{o}/{r}/dispatches` → workflow with
+  `on: repository_dispatch`.
+* **Local cron** that runs `gsa sync && gsa analyze && gsa report` and
+  then pushes `data/output/` to Repo B.
+
+For most personal stars dashboards the built-in 6-hour cron is plenty.

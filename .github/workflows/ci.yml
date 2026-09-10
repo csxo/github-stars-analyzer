@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  prompts-size-check:
+    name: prompts/ size guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify every file in prompts/ is ≤ 30 KB
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAX_KB=30
+          failed=0
+
+          if [ ! -d prompts ]; then
+            echo "::error::prompts/ directory is missing"
+            exit 1
+          fi
+
+          echo "::group::File sizes in prompts/"
+          while IFS= read -r -d '' f; do
+            size_bytes=$(wc -c < "$f")
+            size_kb=$(( (size_bytes + 1023) / 1024 ))
+            status="ok"
+            if [ "$size_kb" -gt "$MAX_KB" ]; then
+              status="FAIL"
+              failed=$((failed + 1))
+            fi
+            printf "  %-32s %5d KB  %s\n" "$(basename "$f")" "$size_kb" "$status"
+          done < <(find prompts -type f -print0 | sort -z)
+          echo "::endgroup::"
+
+          if [ "$failed" -gt 0 ]; then
+            echo ""
+            echo "::error::$failed file(s) exceed the ${MAX_KB} KB size limit. prompts/ files must stay small enough for users to read directly."
+            exit 1
+          fi
+
+          echo ""
+          echo "All prompts/ files are within the ${MAX_KB} KB budget."
+
+      - name: Verify file naming convention
+        shell: bash
+        run: |
+          set -euo pipefail
+          bad=0
+
+          # Every *.md in prompts/ should have a matching _EN.md twin (or be the EN version itself)
+          while IFS= read -r -d '' f; do
+            base=$(basename "$f")
+            case "$base" in
+              *_EN.md) continue ;;  # already the EN version
+              README.md) continue ;; # README has README_EN.md
+              *)
+                dir=$(dirname "$f")
+                stem="${base%.md}"
+                twin="$dir/${stem}_EN.md"
+                if [ ! -f "$twin" ]; then
+                  echo "::error::$f has no English counterpart at $twin"
+                  bad=$((bad + 1))
+                fi
+                ;;
+            esac
+          done < <(find prompts -maxdepth 1 -name "*.md" -print0 | sort -z)
+
+          if [ "$bad" -gt 0 ]; then
+            echo ""
+            echo "::error::$bad file(s) in prompts/ are missing an _EN.md twin. Keep CN/EN parity."
+            exit 1
+          fi
+          echo "All CN files have an EN twin (or are the EN version)."
+
+  tests:
+    name: Python unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e . pytest pytest-asyncio
+      - run: pytest tests/ -q

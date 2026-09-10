@@ -29,6 +29,8 @@
 - 🔁 **失败重试 + 单点容错** — 单 repo 失败不阻塞整批，重跑自动跳过已完成项
 - 🤖 **GitHub Actions 全自动** — 每周一 UTC 04:00 自动跑、可手动触发、上传产物
 
+> 💡 **不想装 Python？** 看 [`prompts/`](./prompts/) 目录——里面打包了三种可复用形式，让任何人都能用 chat AI（Claude / GPT / Cursor / Aider）跑同样的分析，或直接复制一份 prompt 模板。详见 [`prompts/README.md`](./prompts/README.md) 的 30 秒上手指南。
+
 ## 🏗️ 架构一览
 
 ```
@@ -136,8 +138,10 @@ data/output/
 
 ## 📚 文档导航
 
-- 📘 [`ARCHITECTURE.md`](./ARCHITECTURE.md) — 架构设计、数据模型、Phase 编排、关键决策
-- 🛠 [`EXTENDING.md`](./EXTENDING.md) — 怎么加新 LLM、加新字段、改相似度算法等
+- 📘 [`ARCHITECTURE.md`](./ARCHITECTURE.md) / [English](./ARCHITECTURE.md) — 架构设计、数据模型、Phase 编排、关键决策
+- 🛠 [`EXTENDING.md`](./EXTENDING.md) / [English](./EXTENDING.md) — 怎么加新 LLM、加新字段、改相似度算法等
+- 🧩 [`prompts/`](./prompts/) — 可复用的 skill / agent / prompt 分发包，让其他人不用装 Python 也能跑同样分析（详见 [`prompts/README.md`](./prompts/README.md)）
+- 🌐 **在线站点**：<https://csxo.github.io/github-stars-analyzer/prompts/> — 把 prompts 渲染成网页（push 时自动部署）
 
 ## 📄 License
 
