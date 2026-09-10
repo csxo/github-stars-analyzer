@@ -219,12 +219,18 @@ def render_pair_to_files(zh_path: Path | None, en_path: Path | None, *, depth: i
     Output filenames are derived from the actual zh_path / en_path stems
     (so X_CN.md -> X_CN.html, X.md -> X.html, etc.). Language switch
     links point at the .html siblings, not back to the .md source.
+
+    For depth=2 (prompts/), output files land under OUT/prompts/ instead
+    of OUT/, so the resulting site/ tree mirrors the source layout.
     """
     if not zh_path and not en_path:
         return
     src = zh_path or en_path
     title = src.stem.replace("_", " ").title()
     rel_prefix = "../" * depth
+
+    # Output base directory: depth=1 -> OUT, depth=2 -> OUT/prompts
+    out_base = OUT / "prompts" if depth >= 2 else OUT
 
     zh_html_name = _to_html(zh_path.name) if zh_path and zh_path.exists() else None
     en_html_name = _to_html(en_path.name) if en_path and en_path.exists() else None
@@ -241,10 +247,10 @@ def render_pair_to_files(zh_path: Path | None, en_path: Path | None, *, depth: i
             lang_switch_items=build_lang_switch(items),
             home_href=rel_prefix if rel_prefix else "./",
         )
-        out = OUT / zh_html_name
+        out = out_base / zh_html_name
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(zh_html, encoding="utf-8")
-        print(f"  wrote site/{zh_html_name}")
+        print(f"  wrote site/{zh_html_name if depth == 1 else 'prompts/' + zh_html_name}")
 
     if en_path and en_path.exists():
         en_text = en_path.read_text(encoding="utf-8")
@@ -259,10 +265,10 @@ def render_pair_to_files(zh_path: Path | None, en_path: Path | None, *, depth: i
             lang_switch_items=build_lang_switch(items),
             home_href=rel_prefix if rel_prefix else "./",
         )
-        out = OUT / en_html_name
+        out = out_base / en_html_name
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(en_html, encoding="utf-8")
-        print(f"  wrote site/{en_html_name}")
+        print(f"  wrote site/{en_html_name if depth == 1 else 'prompts/' + en_html_name}")
 
 
 def build_landing() -> tuple[str, str]:
