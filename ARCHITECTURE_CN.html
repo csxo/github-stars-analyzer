@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture Cn</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/[email protected]/dist/css/github-markdown.min.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; }
+  .page { max-width: 980px; margin: 0 auto; padding: 24px; }
+  .topbar {
+    background: #f6f8fa; border-bottom: 1px solid #d0d7de;
+    padding: 8px 16px; display: flex; justify-content: space-between; align-items: center;
+    font-size: 14px;
+  }
+  .topbar a { color: #0969da; text-decoration: none; }
+  .topbar a:hover { text-decoration: underline; }
+  .lang-switch a { margin-left: 12px; }
+  .lang-switch a.active { font-weight: 600; color: #24292f; }
+  .markdown-body { background: #fff; padding: 32px; border: 1px solid #d0d7de; border-radius: 6px; }
+  .markdown-body h1 { border-bottom: 1px solid #d0d7de; padding-bottom: 8px; }
+  .markdown-body pre { background: #f6f8fa; padding: 16px; border-radius: 6px; overflow: auto; }
+  .markdown-body code { background: rgba(175,184,193,0.2); padding: 0.2em 0.4em; border-radius: 3px; }
+  .markdown-body table { border-collapse: collapse; }
+  .markdown-body table th, .markdown-body table td { border: 1px solid #d0d7de; padding: 6px 13px; }
+  .markdown-body table tr:nth-child(2n) { background: #f6f8fa; }
+  footer { text-align: center; color: 0; color: #6e7781; padding: 24px; font-size: 12px; }
+  footer a { color: #0969da; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div>📚 <a href="../">GitHub Stars Analyzer</a></div>
+    <div class="lang-switch"><a class="active" href="ARCHITECTURE_CN.md">🇨🇳 中文</a></div>
+  </div>
+  <div class="page">
+    <article class="markdown-body">
+<h1 id="_1">架构说明</h1>
+<p>本文档解释<strong>为什么</strong>代码要这样组织。在做非平凡改动之前先读一遍。</p>
+<h2 id="_2">目标（以及驱动设计的约束）</h2>
+<ol>
+<li><strong>默认增量</strong>：在 5,000 个 star 的账号上重跑流水线必须便宜——输入未变时大多数操作应当是 no-op。</li>
+<li><strong>可恢复</strong>：任何超过几分钟的任务必须能中途被杀后存活下来。"从头再来"不可接受。</li>
+<li><strong>Provider 无关</strong>：加一个新 LLM 厂商只需要在 <code>analyzers/</code> 加一个新文件。相似度算法同理。</li>
+<li><strong>有界批次</strong>：任何 phase 都不应该能跑上几小时。一切都通过 <code>batch_size</code> 和 <code>per_phase_limit</code> 参数化。</li>
+<li><strong>可自托管</strong>：单一二进制入口点、零后台服务、纯标准库 + 3 个小依赖。</li>
+<li><strong>可复现</strong>：每条 <code>job_runs</code> 记录都带 config snapshot，可以重放历史任务。</li>
+</ol>
+<h2 id="_3">数据模型</h2>
+<div class="highlight"><pre><span></span><code>repositories ──┐
+   │            │
+   │            ├─&lt; analyses            (在 repo_id, version, model 上唯一)
+   │            │
+   │            └─&lt; repo_categories &gt;── categories
+   │
+   └─&lt; checkpoints &gt;── job_runs
+</code></pre></div>
+
+<ul>
+<li><code>repositories</code> 是规范存储。行按 <code>id</code> upsert，因此重新同步从不复制——像 <code>stargazers_count</code> 和 <code>topics</code> 这种字段会被覆盖；只有 <code>starred_at</code> 在新 payload 没有时才会保留。</li>
+<li><code>analyses</code> 行按 <code>(repo_id, analysis_version, model)</code> 做键。结合 README hash，缓存失效策略可以用一条 SQL 完成：</li>
+</ul>
+<p><code>sql
+  SELECT 1 FROM analyses a
+   WHERE a.repo_id = :rid
+     AND a.analysis_version = :ver
+     AND a.model = :model
+     AND a.readme_hash = :hash</code></p>
+<ul>
+<li><code>repo_categories</code> 是支持"相似项目"视图的多对多表。LLM 返回的 tag 在这里插入，每 tag 一行，<code>confidence=1.0</code>。聚合流水线从不直接写这张表——只读。</li>
+<li><code>job_runs</code> + <code>checkpoints</code> 提供断点续跑能力。每次 <code>sync</code> / <code>analyze</code> / <code>report</code> 调用写一条 <code>job_runs</code>；每个 phase 写一条 <code>checkpoints</code> 记录 <code>(cursor, processed_ids, failed_ids, last_id)</code>。</li>
+</ul>
+<h2 id="phase">流水线 Phase</h2>
+<div class="highlight"><pre><span></span><code>sync  →  collect    →  readme
+analyze             →  analyze
+report             →  report
+</code></pre></div>
+
+<p>每个 phase 都是 <code>src/github_stars_analyzer/pipeline/orchestrator.py</code> 中一个独立的协程。<strong>它们之间内存中什么都不共享</strong>——每个输入来自 DB，每个输出回到 DB 或文件系统。</p>
+<h3 id="collect"><code>collect</code></h3>
+<ul>
+<li>分页拉取 <code>/users/{name}/starred</code>。</li>
+<li>批量 upsert（每 100 行/提交）保证 SQLite 写入效率。</li>
+<li>尊重 GitHub 的 <code>x-ratelimit-*</code> 头并在配额耗尽时主动 sleep。</li>
+</ul>
+<h3 id="readme"><code>readme</code></h3>
+<ul>
+<li>读 <code>repositories WHERE has_readme=0 OR readme_hash IS NULL</code>。</li>
+<li>用 <code>application/vnd.github.raw</code> media type 调 <code>GET /repos/{o}/{r}/readme</code>——省掉 base64 解码。</li>
+<li>计算 SHA-256，写到 <code>data/cache/readme/xx/&lt;hash&gt;.md</code>，更新 DB 行。</li>
+</ul>
+<h3 id="analyze"><code>analyze</code></h3>
+<ul>
+<li>读 <code>repositories JOIN analyses ... WHERE readme_hash != analyses.readme_hash</code>。<br />
+  这就是完整的缓存失效逻辑——出来的每行都是真正需要新做的工作。</li>
+<li>并发上限由 <code>llm_concurrency</code> 控制。吞吐受最慢的 provider 调用限制；网络快就调高 <code>GSA_LLM_CONCURRENCY</code>。</li>
+<li>每批处理过的 ID 刷新到 <code>checkpoints</code> 行。</li>
+</ul>
+<h3 id="report"><code>report</code></h3>
+<ul>
+<li>全部从 DB 读。</li>
+<li>生成 <code>index.md</code>、<code>categories/*.md</code>、<code>repos/*.md</code>。</li>
+<li>幂等——再跑一次只是覆盖文件。</li>
+</ul>
+<h2 id="_4">缓存失效，一张图说清</h2>
+<div class="highlight"><pre><span></span><code>                 bump analysis_version?
+                 │ yes
+                 ▼
+        ┌────────────────────────┐
+        │  every cached analysis │   ← 全部失效；下次跑重分析
+        │       is "stale"       │
+        └────────────────────────┘
+
+  per-repo:
+  ┌──────────────┐   changed?    ┌──────────────┐
+  │ README body  │ ────────────► │ analysis row │
+  │  (new hash)  │               │  is invalid  │
+  └──────────────┘               └──────────────┘
+        ▲                                │
+        │ fetch                          │ store
+        │                                ▼
+   data/cache/readme/                SQLite analyses table
+</code></pre></div>
+
+<h2 id="_5">续跑语义</h2>
+<ul>
+<li><code>sync --no-resume</code> 是强制重跑的唯一方式；不带它的话，<code>_load_or_init_checkpoint()</code> 会继承最近一条相同命令的 <code>job_runs</code> 行的 processed IDs，所以一个被日常杀掉的 cron 永远从断点继续。</li>
+<li>Checkpoints 是 append-only——失败 ID 被追踪但不自动重试；想强制重新尝试加 <code>--no-resume</code>。</li>
+<li><code>report</code> 故意没有 checkpoint：渲染幂等且快。</li>
+</ul>
+<h2 id="_6">失败模型</h2>
+<table>
+<thead>
+<tr>
+<th>失败</th>
+<th>行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单 repo 的 README 返回 404</td>
+<td>存 <code>readme_hash=""</code>；<code>analyze</code> 跳过</td>
+</tr>
+<tr>
+<td>单 repo 的 LLM 响应无法解析</td>
+<td>记录日志，原始响应持久化以备取证，任务继续</td>
+</tr>
+<tr>
+<td>单 repo 的 LLM 调用 429</td>
+<td><code>OpenAICompatibleProvider</code> 内部指数退避重试</td>
+</tr>
+<tr>
+<td>网络断 30 秒</td>
+<td><code>retry_async</code> 退避后继续</td>
+</tr>
+<tr>
+<td>进程被杀</td>
+<td>下次调用从最后一条 <code>checkpoints</code> 行恢复</td>
+</tr>
+<tr>
+<td>整个 provider 宕机</td>
+<td>任务结束，失败 ID 捕获到 <code>checkpoints.failed_ids</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="sqlite">为什么选 SQLite？</h2>
+<ul>
+<li>单文件 → 备份、复制、检查都简单。</li>
+<li>WAL 模式 → 并发读不阻塞写。</li>
+<li>JSON 列 → 加字段不用 schema 迁移。</li>
+<li><code>sqlite3</code> 在标准库 → 存储层零运行时依赖。</li>
+</ul>
+<h2 id="_7">我们刻意没做的事</h2>
+<ul>
+<li>Web UI。<code>docs/</code> 分支上的 Markdown 文件比另一个 React App 更好浏览、对比、搜索。</li>
+<li>daemon / scheduler。Cron + Actions 足够；流水线幂等所以重跑安全。</li>
+<li>嵌入向量相似度。Tag/topics 上的 Jaccard 是第一刀——够起步；以后换很简单（见 <code>EXTENDING.md</code>）。</li>
+</ul>
+<h2 id="_8">目录结构</h2>
+<div class="highlight"><pre><span></span><code>src/github_stars_analyzer/
+├── __init__.py
+├── cli.py              # click 命令
+├── config.py           # 分层 config loader
+├── analyzers/
+│   ├── llm.py          # provider 抽象 + 3 个实现
+│   └── analyzer.py     # prompt、解析、缓存写
+├── collectors/
+│   ├── github_api.py   # 异步 REST 客户端
+│   └── stars.py        # 高层 collect_stars / collect_readmes
+├── models/
+│   ├── repository.py
+│   ├── category.py
+│   └── job_run.py
+├── output/
+│   ├── markdown.py     # 站点生成器
+│   ├── similarity.py   # Jaccard helpers
+│   └── i18n.py
+├── pipeline/
+│   ├── orchestrator.py # Pipeline + phases
+│   └── resume.py       # checkpoint merge helpers
+├── storage/
+│   ├── database.py     # SQLite + schema
+│   └── cache.py        # 内容寻址文件系统缓存
+└── utils/
+    ├── logger.py
+    ├── hash.py
+    └── retry.py
+</code></pre></div>
+    </article>
+  </div>
+  <footer>
+    Project
+  </footer>
+</body>
+</html>

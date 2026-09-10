@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skill</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/[email protected]/dist/css/github-markdown.min.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; }
+  .page { max-width: 980px; margin: 0 auto; padding: 24px; }
+  .topbar {
+    background: #f6f8fa; border-bottom: 1px solid #d0d7de;
+    padding: 8px 16px; display: flex; justify-content: space-between; align-items: center;
+    font-size: 14px;
+  }
+  .topbar a { color: #0969da; text-decoration: none; }
+  .topbar a:hover { text-decoration: underline; }
+  .lang-switch a { margin-left: 12px; }
+  .lang-switch a.active { font-weight: 600; color: #24292f; }
+  .markdown-body { background: #fff; padding: 32px; border: 1px solid #d0d7de; border-radius: 6px; }
+  .markdown-body h1 { border-bottom: 1px solid #d0d7de; padding-bottom: 8px; }
+  .markdown-body pre { background: #f6f8fa; padding: 16px; border-radius: 6px; overflow: auto; }
+  .markdown-body code { background: rgba(175,184,193,0.2); padding: 0.2em 0.4em; border-radius: 3px; }
+  .markdown-body table { border-collapse: collapse; }
+  .markdown-body table th, .markdown-body table td { border: 1px solid #d0d7de; padding: 6px 13px; }
+  .markdown-body table tr:nth-child(2n) { background: #f6f8fa; }
+  footer { text-align: center; color: 0; color: #6e7781; padding: 24px; font-size: 12px; }
+  footer a { color: #0969da; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div>📚 <a href="../../">GitHub Stars Analyzer</a></div>
+    <div class="lang-switch"><a class="active" href="skill.md">🇨🇳 中文</a> · <a class="" href="skill_EN.md">🇬🇧 English</a></div>
+  </div>
+  <div class="page">
+    <article class="markdown-body">
+<hr />
+<p>name: GitHub Stars Analyzer<br />
+version: 1.0.0<br />
+description: &gt;<br />
+  自动分析指定用户的 GitHub Stars：抓取公开 stars、按分类聚合、生成结构化<br />
+  Markdown 知识库，支持缓存、断点续跑、失败重试、CLI 与 GitHub Actions 自动化。<br />
+  适用于用户给出 GitHub stars 链接（自己的或他人的）希望批量整理出可浏览的<br />
+  Markdown 索引，或希望以 LLM 深度解读每个 star 项目功能/能力/技术栈/价值评分的场景。<br />
+  触发词："分析我的 GitHub stars"、"整理 GitHub star 列表"、"star 分类生成<br />
+  Markdown"、"批量分析 GitHub starred repos"、"分析某人的 GitHub stars"、<br />
+  "github stars analyzer"、"stars knowledge base"。<br />
+  不适用：私有仓库（必须登录）、非 GitHub 平台、单 repo 详情（用通用 readme<br />
+  分析即可）、需要实时刷新的场景（这是个一次性 + 增量工具）。<br />
+description_en: &gt;<br />
+  Fetch a GitHub user's public stars, classify them, and render a structured<br />
+  Markdown knowledge base with caching, resume, retry, CLI, and GitHub Actions<br />
+  automation. Trigger when the user shares a GitHub stars URL and wants a<br />
+  browsable categorized Markdown dump, or wants LLM-powered per-repo deep<br />
+  analysis. Not for private repos (login required), non-GitHub platforms,<br />
+  single-repo detail pages, or real-time requirements.</p>
+<hr />
+<h1 id="github-stars-analyzer">GitHub Stars Analyzer 技能</h1>
+<p>把"GitHub stars 列表"变成"结构化的 Markdown 知识库"。本技能既包含一个<strong>可直接运行的命令行实现</strong>（Python 包），也包含<strong>给 agentic tool 使用的提示词模板</strong>。</p>
+<h2 id="_1">何时使用本技能</h2>
+<p>触发条件（任一）：</p>
+<ul>
+<li>用户分享 GitHub stars URL（自己或他人公开账号），希望整理成可浏览文档</li>
+<li>用户说"分析我的 GitHub stars / 整理 star 列表 / 批量分析 starred 项目"</li>
+<li>用户希望对一个用户的所有 star 项目做：分类聚合 / 同类对比 / LLM 深度解读 / Markdown 输出</li>
+<li>用户希望搭建一个长期运行的 GitHub stars 自动化分析流水线</li>
+</ul>
+<p>不适用的场景：</p>
+<ul>
+<li>私有 stars（需登录，本工具用匿名 API）</li>
+<li>单个 repo 详情深挖（用通用 README 分析即可）</li>
+<li>实时同步（这是 batch 工具，最小粒度是分钟级）</li>
+</ul>
+<h2 id="_2">工作模式</h2>
+<p>技能提供三种使用方式，按用户的工具栈灵活选用：</p>
+<h3 id="a-workbuddy">方式 A · WorkBuddy 直接调用（最快）</h3>
+<p>WorkBuddy 在本会话里可以直接执行：</p>
+<ol>
+<li>接收用户的 GitHub stars URL（必须公开）</li>
+<li>用 GitHub REST API 匿名抓 stars（每页 100，per_page=30 防截断）</li>
+<li>对每个 repo：抓 metadata + topics + description + language</li>
+<li>调用内置启发式分类器（无需 LLM key）或可选 LLM 深度分析</li>
+<li>渲染 Markdown：1 个 <code>index.md</code> + N 个 <code>categories/*.md</code> + M 个 <code>repos/*.md</code></li>
+</ol>
+<p>输出位置：用户工作区下的 <code>data/output/</code> 子目录。</p>
+<p>⚠️ <strong>匿名 API 限制</strong>：60 req/h。读 ~700 个 star 的元数据足够（700/100=7 页），但<strong>不能</strong>在一次会话里读完所有 README——README 抓取需要登录态。</p>
+<h3 id="b-cli">方式 B · 用户本地 CLI（推荐生产环境）</h3>
+<p>用户 clone <code>csxo/github-stars-analyzer</code> 后：</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
+cp<span class="w"> </span>.env.example<span class="w"> </span>.env<span class="w">  </span><span class="c1"># 填 GITHUB_TOKEN（提升到 5000 req/h）+ 可选 LLM_API_KEY</span>
+cp<span class="w"> </span>config/config.yaml.example<span class="w"> </span>config/config.yaml
+
+<span class="c1"># 零密钥跑通（heuristic provider 用 metadata 当 fallback）</span>
+gsa<span class="w"> </span>sync<span class="w"> </span>--provider<span class="w"> </span>heuristic
+gsa<span class="w"> </span>analyze<span class="w"> </span>--provider<span class="w"> </span>heuristic<span class="w"> </span>--model<span class="w"> </span>offline
+gsa<span class="w"> </span>report
+
+<span class="c1"># 接 OpenAI / DeepSeek / 任何 OpenAI 兼容服务</span>
+gsa<span class="w"> </span>sync
+gsa<span class="w"> </span>analyze<span class="w"> </span>--provider<span class="w"> </span>openai_compatible<span class="w"> </span>--model<span class="w"> </span>gpt-4o-mini
+gsa<span class="w"> </span>report
+</code></pre></div>
+
+<p>特性：<br />
+- ✅ 三层缓存键：<code>README hash × analysis_version × model</code><br />
+- ✅ 4 phase 流水线（collect/readme/analyze/report），各 phase 独立 checkpoint<br />
+- ✅ 批处理硬上限（<code>batch_size</code> + <code>per_phase_limit</code>）<br />
+- ✅ SQLite + WAL，单文件存储<br />
+- ✅ GitHub Actions 工作流（schedule + workflow_dispatch）<br />
+- ✅ 失败软处理，单 repo 失败不阻塞 batch</p>
+<h3 id="c-chat-agent">方式 C · 复制粘贴提示词（任何 chat agent）</h3>
+<p>把 <code>prompts/prompt-template.md</code> 内容复制到 Claude / GPT / Cursor / Aider 等任意 chat interface，按提示词模板操作。这种方式适用于：用户没装 Python / 没装 WorkBuddy / 只想临时看一次结果。</p>
+<h2 id="architecturemd">关键设计决策（详见 ARCHITECTURE.md）</h2>
+<table>
+<thead>
+<tr>
+<th>决策</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQLite 而非 Postgres</td>
+<td>单文件、零运行时依赖、Actions cache 友好</td>
+</tr>
+<tr>
+<td>内容寻址缓存（README hash）</td>
+<td>README 变了自动失效分析结果</td>
+</tr>
+<tr>
+<td>analysis_version 字段</td>
+<td>prompt 模板升级时一次性失效整张缓存</td>
+</tr>
+<tr>
+<td>4 phase 流水线</td>
+<td>collect / readme / analyze / report 互相解耦，断点续跑天然成立</td>
+</tr>
+<tr>
+<td>启发式 fallback</td>
+<td>无 API key 也能跑通端到端，便于调试和零成本使用</td>
+</tr>
+<tr>
+<td>Markdown 而非 JSON</td>
+<td>人类可读、GitHub 直接渲染、便于版本管理</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">复用建议</h2>
+<p>别人要复刻这个项目：</p>
+<ol>
+<li><strong>最快（30 秒）</strong>：复制 <code>prompts/prompt-template.md</code> 到任意 chat AI，按模板提问</li>
+<li><strong>生产环境（10 分钟）</strong>：clone <code>csxo/github-stars-analyzer</code>，按 README 装依赖、填 token、<code>gsa sync &amp;&amp; gsa analyze &amp;&amp; gsa report</code></li>
+<li><strong>完全自定义</strong>：参考 <code>prompts/agent.md</code> 的 agent 定义，写自己的 agent loop</li>
+</ol>
+<h2 id="_4">文件清单</h2>
+<div class="highlight"><pre><span></span><code>prompts/
+├── README.md          # 本目录使用说明
+├── agent.md           # 给任何 agentic tool 用的 agent 定义
+├── prompt-template.md # 用户可直接复制粘贴的 prompt
+└── skill.md           # WorkBuddy skill 定义（与本文件等价）
+
+src/github_stars_analyzer/  # 完整 Python 实现
+├── collectors/  # GitHub API + README 抓取
+├── analyzers/   # LLM Provider + 启发式分类
+├── storage/     # SQLite + 内容缓存
+├── pipeline/    # 4 phase 编排 + checkpoint
+├── output/      # Markdown 渲染
+├── cli.py       # click CLI
+└── config.py    # 分层配置
+
+tests/            # 15 个单元测试
+.github/workflows/analyze-stars.yml  # GitHub Actions
+</code></pre></div>
+
+<h2 id="_5">已知边界</h2>
+<ul>
+<li>匿名 API 60 req/h → 读 README 必须配 <code>GITHUB_TOKEN</code></li>
+<li>GitHub REST API 单页最多 100 个 repo</li>
+<li>启发式分类精度 ≈ 70%（基于 description + topics + language），LLM 模式可达 90%+</li>
+<li>同一用户 star 数 &gt; 5000 时建议分批处理</li>
+</ul>
+<h2 id="_6">参考链接</h2>
+<ul>
+<li>完整实现：<a href="https://github.com/csxo/github-stars-analyzer">https://github.com/csxo/github-stars-analyzer</a></li>
+<li>演示输出：<a href="https://github.com/csxo/csxo-stars-analysis">https://github.com/csxo/csxo-stars-analysis</a></li>
+<li>架构详解：本仓库 <code>ARCHITECTURE.md</code></li>
+<li>扩展指南：本仓库 <code>EXTENDING.md</code></li>
+</ul>
+    </article>
+  </div>
+  <footer>
+    Project
+  </footer>
+</body>
+</html>

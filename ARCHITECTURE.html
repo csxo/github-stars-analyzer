@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/[email protected]/dist/css/github-markdown.min.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; }
+  .page { max-width: 980px; margin: 0 auto; padding: 24px; }
+  .topbar {
+    background: #f6f8fa; border-bottom: 1px solid #d0d7de;
+    padding: 8px 16px; display: flex; justify-content: space-between; align-items: center;
+    font-size: 14px;
+  }
+  .topbar a { color: #0969da; text-decoration: none; }
+  .topbar a:hover { text-decoration: underline; }
+  .lang-switch a { margin-left: 12px; }
+  .lang-switch a.active { font-weight: 600; color: #24292f; }
+  .markdown-body { background: #fff; padding: 32px; border: 1px solid #d0d7de; border-radius: 6px; }
+  .markdown-body h1 { border-bottom: 1px solid #d0d7de; padding-bottom: 8px; }
+  .markdown-body pre { background: #f6f8fa; padding: 16px; border-radius: 6px; overflow: auto; }
+  .markdown-body code { background: rgba(175,184,193,0.2); padding: 0.2em 0.4em; border-radius: 3px; }
+  .markdown-body table { border-collapse: collapse; }
+  .markdown-body table th, .markdown-body table td { border: 1px solid #d0d7de; padding: 6px 13px; }
+  .markdown-body table tr:nth-child(2n) { background: #f6f8fa; }
+  footer { text-align: center; color: 0; color: #6e7781; padding: 24px; font-size: 12px; }
+  footer a { color: #0969da; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div>📚 <a href="../">GitHub Stars Analyzer</a></div>
+    <div class="lang-switch"><a class="active" href="ARCHITECTURE.md">🇨🇳 中文</a></div>
+  </div>
+  <div class="page">
+    <article class="markdown-body">
+<h1 id="architecture">Architecture</h1>
+<p>This document explains <em>why</em> the codebase is shaped the way it is.<br />
+Read it once before making non-trivial changes.</p>
+<h2 id="goals-and-the-constraints-that-drove-the-design">Goals (and the constraints that drove the design)</h2>
+<ol>
+<li><strong>Incremental by default.</strong> Re-running the pipeline on a 5,000-star<br />
+   account should be cheap — most operations must be no-ops when their<br />
+   inputs haven't changed.</li>
+<li><strong>Resumable.</strong> Anything longer than a few minutes must survive being<br />
+   killed mid-flight. Nothing is acceptable as "start over".</li>
+<li><strong>Provider-agnostic.</strong> Adding a new LLM vendor is one new file in<br />
+<code>analyzers/</code>. Same for similarity algorithms.</li>
+<li><strong>Bounded batches.</strong> No phase should be capable of running for hours.<br />
+   Everything is parameterised by <code>batch_size</code> and <code>per_phase_limit</code>.</li>
+<li><strong>Self-hostable.</strong> A single binary entry point, zero background<br />
+   services, pure stdlib + 3 small deps.</li>
+<li><strong>Reproducible.</strong> Each <code>job_runs</code> row carries a config snapshot so a<br />
+   historical run can be replayed.</li>
+</ol>
+<h2 id="data-model">Data model</h2>
+<div class="highlight"><pre><span></span><code>repositories ──┐
+   │            │
+   │            ├─&lt; analyses            (unique on repo_id, version, model)
+   │            │
+   │            └─&lt; repo_categories &gt;── categories
+   │
+   └─&lt; checkpoints &gt;── job_runs
+</code></pre></div>
+
+<ul>
+<li><code>repositories</code> is the canonical store. Rows are upserted by <code>id</code>, so a<br />
+  re-sync never duplicates — fields like <code>stargazers_count</code> and <code>topics</code><br />
+  are overwritten; only <code>starred_at</code> is preserved if the new payload<br />
+  doesn't include one.</li>
+<li><code>analyses</code> rows are keyed on <code>(repo_id, analysis_version, model)</code>.<br />
+  Together with the README hash carried alongside, this gives the cache<br />
+  invalidation policy in a single SQL query:</li>
+</ul>
+<p><code>sql
+  SELECT 1 FROM analyses a
+   WHERE a.repo_id = :rid
+     AND a.analysis_version = :ver
+     AND a.model = :model
+     AND a.readme_hash = :hash</code></p>
+<ul>
+<li><code>repo_categories</code> is the many-to-many table feeding the<br />
+  "similar projects" view. Tags from the LLM are inserted here, one row<br />
+  per tag, with <code>confidence=1.0</code>. The aggregation pipeline never writes<br />
+  this table directly — it only reads it.</li>
+<li><code>job_runs</code> + <code>checkpoints</code> give us resume. Each <code>sync</code> / <code>analyze</code> /<br />
+<code>report</code> invocation writes one <code>job_runs</code> row; every phase writes one<br />
+<code>checkpoints</code> row capturing <code>(cursor, processed_ids, failed_ids,
+  last_id)</code>.</li>
+</ul>
+<h2 id="pipeline-phases">Pipeline phases</h2>
+<div class="highlight"><pre><span></span><code>sync  →  collect    →  readme
+analyze             →  analyze
+report             →  report
+</code></pre></div>
+
+<p>Each phase is a self-contained coroutine in<br />
+<code>src/github_stars_analyzer/pipeline/orchestrator.py</code>. They share<br />
+<em>nothing</em> in-memory — every input comes from the DB, every output goes<br />
+back to the DB or the filesystem.</p>
+<h3 id="collect"><code>collect</code></h3>
+<ul>
+<li>Fetches <code>/users/{name}/starred</code> paginated.</li>
+<li>Batches upserts (100 rows / commit) for SQLite write efficiency.</li>
+<li>Honours GitHub's <code>x-ratelimit-*</code> headers and pre-emptively sleeps when<br />
+  the budget is empty.</li>
+</ul>
+<h3 id="readme"><code>readme</code></h3>
+<ul>
+<li>Reads <code>repositories WHERE has_readme=0 OR readme_hash IS NULL</code>.</li>
+<li>Fetches <code>GET /repos/{o}/{r}/readme</code> with the <code>application/vnd.github.raw</code><br />
+  media type — saves us from base64 decoding.</li>
+<li>Computes SHA-256, writes to <code>data/cache/readme/xx/&lt;hash&gt;.md</code>, updates<br />
+  the DB row.</li>
+</ul>
+<h3 id="analyze"><code>analyze</code></h3>
+<ul>
+<li>Reads <code>repositories JOIN analyses ... WHERE readme_hash != analyses.readme_hash</code>.<br />
+  That's the entire cache-invalidation logic — every row that comes out<br />
+  is one that genuinely needs new work.</li>
+<li>Concurrency-capped by <code>llm_concurrency</code>. Throughput is bounded by the<br />
+  slowest provider call; raise <code>GSA_LLM_CONCURRENCY</code> for faster networks.</li>
+<li>Each batch's processed IDs are flushed to a <code>checkpoints</code> row.</li>
+</ul>
+<h3 id="report"><code>report</code></h3>
+<ul>
+<li>Reads everything from the DB.</li>
+<li>Generates <code>index.md</code>, <code>categories/*.md</code>, <code>repos/*.md</code>.</li>
+<li>Idempotent — running it again just overwrites files.</li>
+</ul>
+<h2 id="cache-invalidation-in-one-diagram">Cache invalidation, in one diagram</h2>
+<div class="highlight"><pre><span></span><code>                 bump analysis_version?
+                 │ yes
+                 ▼
+        ┌────────────────────────┐
+        │  every cached analysis │   ← invalidated; next run re-analyzes all
+        │       is "stale"       │
+        └────────────────────────┘
+
+  per-repo:
+  ┌──────────────┐   changed?    ┌──────────────┐
+  │ README body  │ ────────────► │ analysis row │
+  │  (new hash)  │               │  is invalid  │
+  └──────────────┘               └──────────────┘
+        ▲                                │
+        │ fetch                          │ store
+        │                                ▼
+   data/cache/readme/                SQLite analyses table
+</code></pre></div>
+
+<h2 id="resume-semantics">Resume semantics</h2>
+<ul>
+<li><code>sync --no-resume</code> is the only way to force a re-run; without it,<br />
+<code>_load_or_init_checkpoint()</code> will inherit the processed IDs from the<br />
+  most recent <code>job_runs</code> row of the same command, so a daily cron that's<br />
+  killed daily always continues from where it died.</li>
+<li>Checkpoints are append-only — failed IDs are tracked but not retried<br />
+  automatically; pass <code>--no-resume</code> to force a fresh attempt.</li>
+<li><code>report</code> deliberately has no checkpoint: rendering is idempotent and<br />
+  fast.</li>
+</ul>
+<h2 id="failure-model">Failure model</h2>
+<table>
+<thead>
+<tr>
+<th>Failure</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Single repo's README returns 404</td>
+<td>stored with <code>readme_hash=""</code>; <code>analyze</code> skips it</td>
+</tr>
+<tr>
+<td>Single repo's LLM response unparseable</td>
+<td>logged, raw response persisted for forensics, run continues</td>
+</tr>
+<tr>
+<td>Single repo's LLM call 429s</td>
+<td>retried with backoff inside <code>OpenAICompatibleProvider</code></td>
+</tr>
+<tr>
+<td>Network down for 30 s</td>
+<td><code>retry_async</code> backs off, then continues</td>
+</tr>
+<tr>
+<td>Process killed</td>
+<td>next invocation resumes from the last <code>checkpoints</code> row</td>
+</tr>
+<tr>
+<td>Whole-provider outage</td>
+<td>run finishes, failed IDs captured in <code>checkpoints.failed_ids</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="why-sqlite">Why SQLite?</h2>
+<ul>
+<li>Single file → trivial to back up, copy, inspect.</li>
+<li>WAL mode → concurrent readers don't block the writer.</li>
+<li>JSON columns → no schema migrations when we add a field.</li>
+<li><code>sqlite3</code> is in stdlib → zero runtime deps for the storage layer.</li>
+</ul>
+<h2 id="what-we-deliberately-didnt-build">What we deliberately didn't build</h2>
+<ul>
+<li>A web UI. Markdown files in a <code>docs/</code> branch are easier to browse,<br />
+  diff, and search than another React app.</li>
+<li>A daemon / scheduler. Cron + Actions is good enough; the pipeline is<br />
+  idempotent so re-runs are safe.</li>
+<li>Embedding-based similarity. Jaccard on tags/topics is the first cut —<br />
+  good enough to start; trivial to swap later (see <code>EXTENDING.md</code>).</li>
+</ul>
+<h2 id="directory-layout">Directory layout</h2>
+<div class="highlight"><pre><span></span><code>src/github_stars_analyzer/
+├── __init__.py
+├── cli.py              # click commands
+├── config.py           # layered config loader
+├── analyzers/
+│   ├── llm.py          # provider abstraction + 3 implementations
+│   └── analyzer.py     # prompt, parsing, cache write
+├── collectors/
+│   ├── github_api.py   # async REST client
+│   └── stars.py        # high-level collect_stars / collect_readmes
+├── models/
+│   ├── repository.py
+│   ├── category.py
+│   └── job_run.py
+├── output/
+│   ├── markdown.py     # the site generator
+│   ├── similarity.py   # Jaccard helpers
+│   └── i18n.py
+├── pipeline/
+│   ├── orchestrator.py # Pipeline + phases
+│   └── resume.py       # checkpoint merge helpers
+├── storage/
+│   ├── database.py     # SQLite + schema
+│   └── cache.py        # content-addressed filesystem cache
+└── utils/
+    ├── logger.py
+    ├── hash.py
+    └── retry.py
+</code></pre></div>
+    </article>
+  </div>
+  <footer>
+    Project
+  </footer>
+</body>
+</html>

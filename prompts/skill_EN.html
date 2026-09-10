@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skill</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/[email protected]/dist/css/github-markdown.min.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; }
+  .page { max-width: 980px; margin: 0 auto; padding: 24px; }
+  .topbar {
+    background: #f6f8fa; border-bottom: 1px solid #d0d7de;
+    padding: 8px 16px; display: flex; justify-content: space-between; align-items: center;
+    font-size: 14px;
+  }
+  .topbar a { color: #0969da; text-decoration: none; }
+  .topbar a:hover { text-decoration: underline; }
+  .lang-switch a { margin-left: 12px; }
+  .lang-switch a.active { font-weight: 600; color: #24292f; }
+  .markdown-body { background: #fff; padding: 32px; border: 1px solid #d0d7de; border-radius: 6px; }
+  .markdown-body h1 { border-bottom: 1px solid #d0d7de; padding-bottom: 8px; }
+  .markdown-body pre { background: #f6f8fa; padding: 16px; border-radius: 6px; overflow: auto; }
+  .markdown-body code { background: rgba(175,184,193,0.2); padding: 0.2em 0.4em; border-radius: 3px; }
+  .markdown-body table { border-collapse: collapse; }
+  .markdown-body table th, .markdown-body table td { border: 1px solid #d0d7de; padding: 6px 13px; }
+  .markdown-body table tr:nth-child(2n) { background: #f6f8fa; }
+  footer { text-align: center; color: 0; color: #6e7781; padding: 24px; font-size: 12px; }
+  footer a { color: #0969da; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div>📚 <a href="../../">GitHub Stars Analyzer</a></div>
+    <div class="lang-switch"><a class="" href="skill.md">🇨🇳 中文</a> · <a class="active" href="skill_EN.md">🇬🇧 English</a></div>
+  </div>
+  <div class="page">
+    <article class="markdown-body">
+<hr />
+<p>name: GitHub Stars Analyzer<br />
+version: 1.0.0<br />
+description: &gt;<br />
+  Auto-analyze a given GitHub user's stars: fetch public stars, aggregate by category, generate<br />
+  a structured Markdown knowledge base with caching, resume, retry, CLI, and GitHub Actions<br />
+  automation. Trigger when the user shares a GitHub stars URL (their own or someone else's)<br />
+  and wants a browsable categorized Markdown dump, or wants LLM-powered per-repo deep analysis.<br />
+  Triggers: "analyze my GitHub stars", "organize GitHub star list", "star classification into<br />
+  Markdown", "batch-analyze GitHub starred repos", "analyze someone's GitHub stars",<br />
+  "github stars analyzer", "stars knowledge base".<br />
+  Not for: private repos (login required), non-GitHub platforms, single-repo detail pages<br />
+  (use generic README analysis), real-time refresh requirements (this is a batch tool).<br />
+description_en: &gt;<br />
+  Fetch a GitHub user's public stars, classify them, and render a structured Markdown<br />
+  knowledge base with caching, resume, retry, CLI, and GitHub Actions automation. Trigger<br />
+  when the user shares a GitHub stars URL and wants a browsable categorized Markdown dump,<br />
+  or wants LLM-powered per-repo deep analysis. Not for private repos (login required),<br />
+  non-GitHub platforms, single-repo detail pages, or real-time requirements.</p>
+<hr />
+<h1 id="github-stars-analyzer-skill-english">GitHub Stars Analyzer Skill (English)</h1>
+<p>This Skill turns "GitHub stars lists" into "structured Markdown knowledge bases". It includes a <strong>directly runnable CLI implementation</strong> (Python package) and <strong>prompt templates for any agentic tool</strong>.</p>
+<h2 id="when-to-use-this-skill">When to use this skill</h2>
+<p>Triggers (any one):</p>
+<ul>
+<li>User shares a GitHub stars URL (own or someone else's public account), wants to organize it into browsable documents</li>
+<li>User says "analyze my GitHub stars / organize my star list / batch-analyze starred projects"</li>
+<li>User wants to do category aggregation / same-domain comparison / LLM deep analysis / Markdown output for all starred projects</li>
+<li>User wants to set up a long-running GitHub stars automation pipeline</li>
+</ul>
+<p>Not applicable:</p>
+<ul>
+<li>Private stars (login required; this tool uses anonymous API)</li>
+<li>Single-repo detail deep dive (use generic README analysis instead)</li>
+<li>Real-time sync (this is a batch tool, min granularity is minutes)</li>
+</ul>
+<h2 id="usage-modes">Usage modes</h2>
+<p>Three ways to use this Skill, choose based on the user's tooling stack:</p>
+<h3 id="mode-a-direct-workbuddy-invocation-fastest">Mode A · Direct WorkBuddy invocation (fastest)</h3>
+<p>WorkBuddy can execute directly in the current session:</p>
+<ol>
+<li>Receive the user's GitHub stars URL (must be public)</li>
+<li>Use GitHub REST API anonymously to fetch stars (per_page=100, but 30 to avoid truncation)</li>
+<li>For each repo: fetch metadata + topics + description + language</li>
+<li>Call the built-in heuristic classifier (no LLM key required) or optional LLM deep analysis</li>
+<li>Render Markdown: 1 <code>index.md</code> + N <code>categories/*.md</code> + M <code>repos/*.md</code></li>
+</ol>
+<p>Output location: <code>data/output/</code> subdirectory under the user's workspace.</p>
+<p>⚠️ <strong>Anonymous API limit</strong>: 60 req/h. Metadata for ~700 stars fits (700/100=7 pages), but <strong>cannot</strong> read all READMEs in one session — README fetch requires authenticated access.</p>
+<h3 id="mode-b-users-local-cli-recommended-for-production">Mode B · User's local CLI (recommended for production)</h3>
+<p>User clones <code>csxo/github-stars-analyzer</code> then:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
+cp<span class="w"> </span>.env.example<span class="w"> </span>.env<span class="w">  </span><span class="c1"># fill in GITHUB_TOKEN (raises to 5000 req/h) + optional LLM_API_KEY</span>
+cp<span class="w"> </span>config/config.yaml.example<span class="w"> </span>config/config.yaml
+
+<span class="c1"># Zero-key run-through (heuristic provider uses metadata as fallback)</span>
+gsa<span class="w"> </span>sync<span class="w"> </span>--provider<span class="w"> </span>heuristic
+gsa<span class="w"> </span>analyze<span class="w"> </span>--provider<span class="w"> </span>heuristic<span class="w"> </span>--model<span class="w"> </span>offline
+gsa<span class="w"> </span>report
+
+<span class="c1"># With OpenAI / DeepSeek / any OpenAI-compatible service</span>
+gsa<span class="w"> </span>sync
+gsa<span class="w"> </span>analyze<span class="w"> </span>--provider<span class="w"> </span>openai_compatible<span class="w"> </span>--model<span class="w"> </span>gpt-4o-mini
+gsa<span class="w"> </span>report
+</code></pre></div>
+
+<p>Features:<br />
+- ✅ Three-axis cache key: <code>README hash × analysis_version × model</code><br />
+- ✅ 4-phase pipeline (collect/readme/analyze/report), each phase has its own checkpoint<br />
+- ✅ Hard batch limits (<code>batch_size</code> + <code>per_phase_limit</code>)<br />
+- ✅ SQLite + WAL, single-file storage<br />
+- ✅ GitHub Actions workflow (schedule + workflow_dispatch)<br />
+- ✅ Soft failure: a single repo failure does not block the batch</p>
+<h3 id="mode-c-copy-paste-prompts-any-chat-agent">Mode C · Copy-paste prompts (any chat agent)</h3>
+<p>Copy <code>prompts/prompt-template.md</code> content into Claude / GPT / Cursor / Aider — any chat interface. This mode is for: users without Python / without WorkBuddy / one-time casual use.</p>
+<h2 id="key-design-decisions-see-architecturemd-for-details">Key design decisions (see ARCHITECTURE.md for details)</h2>
+<table>
+<thead>
+<tr>
+<th>Decision</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQLite over Postgres</td>
+<td>Single file, zero runtime deps, Actions cache friendly</td>
+</tr>
+<tr>
+<td>Content-addressable cache (README hash)</td>
+<td>Auto-invalidate analysis when README changes</td>
+</tr>
+<tr>
+<td><code>analysis_version</code> field</td>
+<td>Prompt template upgrade invalidates the entire cache in one go</td>
+</tr>
+<tr>
+<td>4-phase pipeline</td>
+<td>collect / readme / analyze / report decoupled; resume is natural</td>
+</tr>
+<tr>
+<td>Heuristic fallback</td>
+<td>End-to-end works without API key, easy to debug and zero-cost</td>
+</tr>
+<tr>
+<td>Markdown over JSON</td>
+<td>Human-readable, GitHub renders directly, version-control friendly</td>
+</tr>
+</tbody>
+</table>
+<h2 id="reuse-guide">Reuse guide</h2>
+<p>To fork this project for others:</p>
+<ol>
+<li><strong>Fastest (30 seconds)</strong>: copy <code>prompts/prompt-template.md</code> into any chat AI, ask per the template</li>
+<li><strong>Production (10 minutes)</strong>: clone <code>csxo/github-stars-analyzer</code>, install deps, fill token, <code>gsa sync &amp;&amp; gsa analyze &amp;&amp; gsa report</code></li>
+<li><strong>Fully customized</strong>: reference <code>prompts/agent.md</code> and write your own agent loop</li>
+</ol>
+<h2 id="file-inventory">File inventory</h2>
+<div class="highlight"><pre><span></span><code>prompts/
+├── README.md          # this directory's guide (CN)
+├── README_EN.md       # this directory's guide (EN)
+├── agent.md           # agent definition for any agentic tool (CN)
+├── agent_EN.md        # agent definition (EN)
+├── prompt-template.md # copy-paste prompt templates (CN)
+├── prompt-template_EN.md # copy-paste templates (EN)
+├── skill.md           # WorkBuddy skill definition (CN)
+└── skill_EN.md        # WorkBuddy skill definition (EN)
+
+src/github_stars_analyzer/  # full Python implementation
+├── collectors/  # GitHub API + README fetch
+├── analyzers/   # LLM Provider + heuristic classification
+├── storage/     # SQLite + content cache
+├── pipeline/    # 4-phase orchestration + checkpoint
+├── output/      # Markdown rendering
+├── cli.py       # click CLI
+└── config.py    # layered configuration
+
+tests/            # 15 unit tests
+.github/workflows/analyze-stars.yml  # GitHub Actions
+</code></pre></div>
+
+<h2 id="known-boundaries">Known boundaries</h2>
+<ul>
+<li>Anonymous API 60 req/h → reading READMEs requires <code>GITHUB_TOKEN</code></li>
+<li>GitHub REST API: max 100 repos per page</li>
+<li>Heuristic classification accuracy ~70% (based on description + topics + language), LLM mode reaches 90%+</li>
+<li>Same user stars &gt; 5000 recommend batched processing</li>
+</ul>
+<h2 id="reference-links">Reference links</h2>
+<ul>
+<li>Full implementation: <a href="https://github.com/csxo/github-stars-analyzer">https://github.com/csxo/github-stars-analyzer</a></li>
+<li>Demo output: <a href="https://github.com/csxo/csxo-stars-analysis">https://github.com/csxo/csxo-stars-analysis</a></li>
+<li>Architecture deep dive: <code>ARCHITECTURE.md</code> in this repo</li>
+<li>Extension guide: <code>EXTENDING.md</code> in this repo</li>
+</ul>
+    </article>
+  </div>
+  <footer>
+    Project
+  </footer>
+</body>
+</html>

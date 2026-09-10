@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Extending Cn</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/[email protected]/dist/css/github-markdown.min.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; }
+  .page { max-width: 980px; margin: 0 auto; padding: 24px; }
+  .topbar {
+    background: #f6f8fa; border-bottom: 1px solid #d0d7de;
+    padding: 8px 16px; display: flex; justify-content: space-between; align-items: center;
+    font-size: 14px;
+  }
+  .topbar a { color: #0969da; text-decoration: none; }
+  .topbar a:hover { text-decoration: underline; }
+  .lang-switch a { margin-left: 12px; }
+  .lang-switch a.active { font-weight: 600; color: #24292f; }
+  .markdown-body { background: #fff; padding: 32px; border: 1px solid #d0d7de; border-radius: 6px; }
+  .markdown-body h1 { border-bottom: 1px solid #d0d7de; padding-bottom: 8px; }
+  .markdown-body pre { background: #f6f8fa; padding: 16px; border-radius: 6px; overflow: auto; }
+  .markdown-body code { background: rgba(175,184,193,0.2); padding: 0.2em 0.4em; border-radius: 3px; }
+  .markdown-body table { border-collapse: collapse; }
+  .markdown-body table th, .markdown-body table td { border: 1px solid #d0d7de; padding: 6px 13px; }
+  .markdown-body table tr:nth-child(2n) { background: #f6f8fa; }
+  footer { text-align: center; color: 0; color: #6e7781; padding: 24px; font-size: 12px; }
+  footer a { color: #0969da; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div>📚 <a href="../">GitHub Stars Analyzer</a></div>
+    <div class="lang-switch"><a class="active" href="EXTENDING_CN.md">🇨🇳 中文</a></div>
+  </div>
+  <div class="page">
+    <article class="markdown-body">
+<h1 id="_1">扩展指南</h1>
+<p>代码围绕几个狭窄的 seam 组织。下面每一节展示交付某个功能所需的最小改动。</p>
+<h2 id="1-llm-provider">1. 加新 LLM Provider</h2>
+<p>在 <code>src/github_stars_analyzer/analyzers/llm.py</code> 里写一个满足 <code>LLMProvider</code> 协议的类：</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">AnthropicProvider</span><span class="p">:</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="s2">"anthropic"</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="fm">__aenter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="o">...</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="fm">__aexit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">exc</span><span class="p">):</span> <span class="o">...</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">complete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">LLMRequest</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+
+<p>然后在 <code>build_provider()</code> 里注册，并把字面量加到 <code>LLMConfig.provider</code> 的 <code>Literal[...]</code> 联合。</p>
+<p>就这些——<code>Pipeline</code> 和 <code>RepoAnalyzer</code> 不需要改。</p>
+<h2 id="2-schema">2. 加新分析 schema 字段</h2>
+<ol>
+<li>在 <code>models/repository.py::AnalysisResult</code> 加字段。</li>
+<li>更新 <code>analyzers/analyzer.py</code> 的 <code>SYSTEM_PROMPT</code> 来描述它。</li>
+<li>在 <code>config/config.yaml</code> 里 bump <code>analysis_version</code>。</li>
+</ol>
+<p>缓存会一次性失效所有分析行（因为 <code>analysis_version</code> 是 cache key 的一部分），下次 <code>gsa analyze</code> 会在所有 repo 上填新字段。</p>
+<h2 id="3">3. 换成嵌入向量相似度</h2>
+<p><code>output/similarity.py</code> 定义了 report 生成器用的两个函数：</p>
+<ul>
+<li><code>repo_keyset(repo, analysis)</code> — 生成对比特征集。</li>
+<li><code>find_similar(repo, analysis, pool, threshold, top_n)</code> — 返回排序后的相似 repos。</li>
+</ul>
+<p>要切到嵌入向量：</p>
+<ol>
+<li>在 <code>pyproject.toml</code> 加 <code>embeddings</code> 可选依赖（已有：<code>numpy&gt;=1.26</code>）。</li>
+<li>扩展 schema 加 <code>embeddings</code> 表，键为 repo_id。</li>
+<li>实现 <code>EmbeddingProvider</code>（例如 <code>sentence-transformers</code> 或 LLM 的 embeddings endpoint）。</li>
+<li>用向量版替换 <code>repo_keyset</code> 和 <code>find_similar</code>。</li>
+<li>更新 <code>MarkdownGenerator.render_all()</code> 调用新路径。</li>
+</ol>
+<p><code>MarkdownGenerator</code> 和报告布局不需要改。</p>
+<h2 id="4-markdown-github-pages">4. 把 Markdown 推到 GitHub Pages 分支</h2>
+<p>GitHub Actions workflow 已经把 Markdown 作为 artifact 上传。要自动发布：</p>
+<ol>
+<li>加一个 deploy job：checkout <code>gh-pages</code>、把 <code>data/output/</code> 拷到分支根目录、提交。</li>
+<li>配置 Pages → deploy from branch → <code>gh-pages</code> / root。</li>
+</ol>
+<p>下面 <code>EXTENDING.md</code> 里有一个参考 <code>deploy</code> job。</p>
+<div class="highlight"><pre><span></span><code><span class="nt">deploy</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">needs</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analyze</span>
+<span class="w">  </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
+<span class="w">  </span><span class="nt">permissions</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">contents</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">write</span>
+<span class="w">  </span><span class="nt">steps</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v4</span>
+<span class="w">      </span><span class="nt">with</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> ref</span><span class="p">:</span><span class="w"> </span><span class="nv">gh-pages</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/download-artifact@v4</span>
+<span class="w">      </span><span class="nt">with</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">stars-report</span><span class="p p-Indicator">,</span><span class="nt"> path</span><span class="p">:</span><span class="w"> </span><span class="nv">.</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">        </span><span class="no">git config user.name "github-actions[bot]"</span>
+<span class="w">        </span><span class="no">git config user.email "41898282+github-actions[bot]@users.noreply.github.com"</span>
+<span class="w">        </span><span class="no">git add -A</span>
+<span class="w">        </span><span class="no">git diff --cached --quiet || git commit -m "Update stars report"</span>
+<span class="w">        </span><span class="no">git push</span>
+</code></pre></div>
+
+<h2 id="5-phase">5. 加新流水线 Phase</h2>
+<p>Phase 只是注册在 <code>pipeline/orchestrator.py::Pipeline._dispatch</code> 里的协程。要加 <code>embed</code>：</p>
+<ol>
+<li>把协程加到 <code>Pipeline</code>。</li>
+<li>在 <code>_dispatch</code> 和 <code>VALID_PHASES</code> 注册。</li>
+<li>可选：加到 <code>config.py</code> 的 <code>PipelineConfig.phases</code>。</li>
+<li>更新 <code>cli.py</code> 让用户可以 <code>--phases collect,readme,analyze,embed</code>。</li>
+</ol>
+<p>Phase 通过 <code>_load_or_init_checkpoint()</code> 和 <code>_update_checkpoint()</code> 自动获得 checkpoint。</p>
+<h2 id="6-llm">6. 本地跑 LLM</h2>
+<ul>
+<li><strong>Ollama</strong> 在 <code>http://localhost:11434/v1</code> 暴露 OpenAI 兼容 endpoint。设 <code>LLM_BASE_URL</code> 并用任意模型名（如 <code>qwen2.5-coder:7b</code>）。</li>
+<li><strong>vLLM</strong> 同理——任何通过它 OpenAI server 服务的开放模型。</li>
+<li>对很小（≤3B）的模型，期望 tags + <code>value_score</code> 质量偏低。启发式 provider 通常更有用。</li>
+</ul>
+<h2 id="7-stars">7. 多用户 Stars</h2>
+<p>DB 按 <code>id</code>（GitHub 的全局 repo id）做键，在整个 GitHub 实例中唯一——所以同一 repo 被两个用户 star 放在同一数据库会冲突。要支持多用户：</p>
+<ul>
+<li>在 <code>repositories</code> 和 <code>analyses</code> 加 <code>user</code> 列。</li>
+<li><code>repositories.UNIQUE(full_name)</code> → <code>UNIQUE(user, full_name)</code>。</li>
+<li>更新 <code>analyzer.analyze_one</code> 和 <code>find_similar</code> 按 user 过滤。</li>
+</ul>
+<p>这是列出的扩展里侵入性最大的；其他都是自包含的。</p>
+<h2 id="8-github-enterprise">8. 接 GitHub Enterprise</h2>
+<p>把 <code>github.base_url</code> 设成你的 enterprise 主机（<code>https://github.acme.com/api/v3</code>）：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">github</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">base_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.acme.com/api/v3</span>
+</code></pre></div>
+
+<p>除了错误信息，客户端不在任何地方假设 github.com。</p>
+<h2 id="9-dataoutput">9. 跨仓库自动同步（<code>data/output/</code> → 兄弟仓库）</h2>
+<p><code>gsa report</code> 在 CI 里跑完之后，你大概率希望把生成的 Markdown 同步到<br />
+一个对外只读的兄弟仓库，比如 <code>csxo/csxo-stars-analysis</code>。仓库自带的<br />
+<code>.github/workflows/sync-to-repo-b.yml</code> + <code>.github/scripts/sync_to_repo_b.py</code><br />
+就是用 Contents API 做这件事的——不需要 <code>git push</code>，也不需要给 Repo A<br />
+申请跨仓权限。</p>
+<p>三步启用：</p>
+<ol>
+<li><strong>生成 fine-grained PAT</strong></li>
+</ol>
+<p>去 <a href="https://github.com/settings/tokens?type=beta">https://github.com/settings/tokens?type=beta</a>，新建一个 token：</p>
+<ul>
+<li>Resource owner：<strong>只选</strong>目标仓库所属的账号</li>
+<li>Repository access：<strong>只勾</strong>目标仓库（例如 <code>csxo/csxo-stars-analysis</code>）</li>
+<li>Permissions → Repository → <strong>Contents: Read and write</strong></li>
+</ul>
+<blockquote>
+<p>Classic PAT 也可以，但 fine-grained 一旦泄露影响面更小。</p>
+</blockquote>
+<ol>
+<li><strong>把它作为 Secret 加到 Repo A</strong></li>
+</ol>
+<p><code>Repo A → Settings → Secrets and variables → Actions → New repository secret</code></p>
+<ul>
+<li>Name: <code>SYNC_PAT</code></li>
+<li>
+<p>Value: 第 1 步拿到的 token</p>
+</li>
+<li>
+<p><strong>（可选）覆盖目标仓库</strong></p>
+</li>
+</ul>
+<p>默认同步到 <code>csxo/csxo-stars-analysis</code>。想改的话，在同一个面板里加一个<br />
+<em>变量</em>（不是 secret），名字 <code>SYNC_TARGET_REPO</code>，例如<br />
+<code>yourname/your-stars-analysis</code>。</p>
+<p>之后 <code>Analyze Stars</code> 跑完，<code>Sync to Repo B</code> 会自动接上——当然你也可以在<br />
+Actions 标签页里手动触发一次。</p>
+<h3 id="_2">同步原理</h3>
+<ul>
+<li><code>analyze-stars.yml</code> 跑（现在是每 6 小时一次 + 手动触发）。</li>
+<li>成功后，<code>sync-to-repo-b.yml</code> 通过 <code>workflow_run</code> 触发。</li>
+<li>下载 <code>stars-report</code> artifact，然后跑<br />
+<code>python .github/scripts/sync_to_repo_b.py data/output &lt;target&gt;</code>。</li>
+<li>脚本一次 API 调用读出<strong>远程 git tree</strong>，再算每个本地文件的<br />
+<strong>git blob SHA</strong>，只 PUT / DELETE 差异部分。典型一周（新增 stars<br />
+  个位数）只会产生 5–10 个提交，而不是 700+。</li>
+<li>脚本会自动跳过首层路径匹配 <code>.git,LICENSE,LICENSE_CN.md,README.md,README_CN.md</code><br />
+  的文件，所以 Repo B 上手工维护的顶层文件会被原样保留。</li>
+</ul>
+<h3 id="star">关于"star 事件实时触发"</h3>
+<p>GitHub Actions 不把 <code>star.created</code> / <code>star.deleted</code> 当 workflow 触发器<br />
+（它们只在 webhook 里）。可选方案：</p>
+<ul>
+<li><strong>6 小时 cron</strong>（当前自带——已经够大部分人用）。</li>
+<li><strong>GitHub App</strong>：订阅 <code>star</code> 事件，调<br />
+<code>POST /repos/{o}/{r}/dispatches</code> → <code>on: repository_dispatch</code> 的 workflow。</li>
+<li><strong>本地 cron</strong>：跑 <code>gsa sync &amp;&amp; gsa analyze &amp;&amp; gsa report</code>，再把<br />
+<code>data/output/</code> 推到 Repo B。</li>
+</ul>
+<p>个人 stars 仪表盘这种规模，自带的 6 小时 cron 已经足够。</p>
+    </article>
+  </div>
+  <footer>
+    Project
+  </footer>
+</body>
+</html>

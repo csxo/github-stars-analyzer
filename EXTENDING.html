@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Extending</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/[email protected]/dist/css/github-markdown.min.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; }
+  .page { max-width: 980px; margin: 0 auto; padding: 24px; }
+  .topbar {
+    background: #f6f8fa; border-bottom: 1px solid #d0d7de;
+    padding: 8px 16px; display: flex; justify-content: space-between; align-items: center;
+    font-size: 14px;
+  }
+  .topbar a { color: #0969da; text-decoration: none; }
+  .topbar a:hover { text-decoration: underline; }
+  .lang-switch a { margin-left: 12px; }
+  .lang-switch a.active { font-weight: 600; color: #24292f; }
+  .markdown-body { background: #fff; padding: 32px; border: 1px solid #d0d7de; border-radius: 6px; }
+  .markdown-body h1 { border-bottom: 1px solid #d0d7de; padding-bottom: 8px; }
+  .markdown-body pre { background: #f6f8fa; padding: 16px; border-radius: 6px; overflow: auto; }
+  .markdown-body code { background: rgba(175,184,193,0.2); padding: 0.2em 0.4em; border-radius: 3px; }
+  .markdown-body table { border-collapse: collapse; }
+  .markdown-body table th, .markdown-body table td { border: 1px solid #d0d7de; padding: 6px 13px; }
+  .markdown-body table tr:nth-child(2n) { background: #f6f8fa; }
+  footer { text-align: center; color: 0; color: #6e7781; padding: 24px; font-size: 12px; }
+  footer a { color: #0969da; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div>📚 <a href="../">GitHub Stars Analyzer</a></div>
+    <div class="lang-switch"><a class="active" href="EXTENDING.md">🇨🇳 中文</a></div>
+  </div>
+  <div class="page">
+    <article class="markdown-body">
+<h1 id="extending-the-analyzer">Extending the analyzer</h1>
+<p>The codebase is built around a handful of narrow seams. Each section below<br />
+shows the smallest possible change that delivers the feature.</p>
+<h2 id="1-adding-a-new-llm-provider">1. Adding a new LLM provider</h2>
+<p>Create a class that satisfies the <code>LLMProvider</code> protocol in<br />
+<code>src/github_stars_analyzer/analyzers/llm.py</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">AnthropicProvider</span><span class="p">:</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="s2">"anthropic"</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="fm">__aenter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="o">...</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="fm">__aexit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">exc</span><span class="p">):</span> <span class="o">...</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">complete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">LLMRequest</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+
+<p>Then register it in <code>build_provider()</code> and add the literal to the<br />
+<code>LLMConfig.provider</code> <code>Literal[...]</code> union.</p>
+<p>That's it — <code>Pipeline</code> and <code>RepoAnalyzer</code> need no changes.</p>
+<h2 id="2-adding-a-new-analysis-schema-field">2. Adding a new analysis schema field</h2>
+<ol>
+<li>Add the field to <code>models/repository.py::AnalysisResult</code>.</li>
+<li>Update <code>SYSTEM_PROMPT</code> in <code>analyzers/analyzer.py</code> to describe it.</li>
+<li>Bump <code>analysis_version</code> in <code>config/config.yaml</code>.</li>
+</ol>
+<p>The cache will invalidate every analysis row in one shot (because<br />
+<code>analysis_version</code> is part of the cache key), and the next <code>gsa analyze</code><br />
+will populate the new field everywhere.</p>
+<h2 id="3-swapping-in-embedding-based-similarity">3. Swapping in embedding-based similarity</h2>
+<p><code>output/similarity.py</code> defines two functions used by the report<br />
+generator:</p>
+<ul>
+<li><code>repo_keyset(repo, analysis)</code> — produce the comparison feature set.</li>
+<li><code>find_similar(repo, analysis, pool, threshold, top_n)</code> — return ranked<br />
+  similar repos.</li>
+</ul>
+<p>To switch to embeddings:</p>
+<ol>
+<li>Add an <code>embeddings</code> optional dependency to <code>pyproject.toml</code><br />
+   (already there: <code>numpy&gt;=1.26</code>).</li>
+<li>Extend the schema with an <code>embeddings</code> table keyed by repo_id.</li>
+<li>Implement an <code>EmbeddingProvider</code> (e.g. via <code>sentence-transformers</code> or<br />
+   the LLM's embeddings endpoint).</li>
+<li>Replace <code>repo_keyset</code> and <code>find_similar</code> with vector-based versions.</li>
+<li>Update <code>MarkdownGenerator.render_all()</code> to call the new path.</li>
+</ol>
+<p><code>MarkdownGenerator</code> and the report layout don't need to change.</p>
+<h2 id="4-pushing-markdown-to-a-github-pages-branch">4. Pushing Markdown to a GitHub Pages branch</h2>
+<p>The GitHub Actions workflow already attaches Markdown as an artifact.<br />
+To publish automatically:</p>
+<ol>
+<li>Add a deploy job that checks out <code>gh-pages</code>, copies <code>data/output/</code><br />
+   into the branch root, and commits.</li>
+<li>Configure Pages → deploy from branch → <code>gh-pages</code> / root.</li>
+</ol>
+<p>A reference <code>deploy</code> job is in <code>EXTENDING.md</code> snippet below.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">deploy</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">needs</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analyze</span>
+<span class="w">  </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
+<span class="w">  </span><span class="nt">permissions</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">contents</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">write</span>
+<span class="w">  </span><span class="nt">steps</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v4</span>
+<span class="w">      </span><span class="nt">with</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> ref</span><span class="p">:</span><span class="w"> </span><span class="nv">gh-pages</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/download-artifact@v4</span>
+<span class="w">      </span><span class="nt">with</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">stars-report</span><span class="p p-Indicator">,</span><span class="nt"> path</span><span class="p">:</span><span class="w"> </span><span class="nv">.</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<span class="w">        </span><span class="no">git config user.name "github-actions[bot]"</span>
+<span class="w">        </span><span class="no">git config user.email "41898282+github-actions[bot]@users.noreply.github.com"</span>
+<span class="w">        </span><span class="no">git add -A</span>
+<span class="w">        </span><span class="no">git diff --cached --quiet || git commit -m "Update stars report"</span>
+<span class="w">        </span><span class="no">git push</span>
+</code></pre></div>
+
+<h2 id="5-adding-a-new-pipeline-phase">5. Adding a new pipeline phase</h2>
+<p>Phases are just coroutines registered in<br />
+<code>pipeline/orchestrator.py::Pipeline._dispatch</code>. To add <code>embed</code>:</p>
+<ol>
+<li>Add the coroutine to <code>Pipeline</code>.</li>
+<li>Register it in <code>_dispatch</code> and in <code>VALID_PHASES</code>.</li>
+<li>Optionally add it to <code>PipelineConfig.phases</code> in <code>config.py</code>.</li>
+<li>Update <code>cli.py</code> so users can <code>--phases collect,readme,analyze,embed</code>.</li>
+</ol>
+<p>Phases get checkpoints for free via <code>_load_or_init_checkpoint()</code> and<br />
+<code>_update_checkpoint()</code>.</p>
+<h2 id="6-running-an-llm-locally">6. Running an LLM locally</h2>
+<ul>
+<li><strong>Ollama</strong> exposes an OpenAI-compatible endpoint at<br />
+<code>http://localhost:11434/v1</code>. Set <code>LLM_BASE_URL</code> and use any model<br />
+  name (e.g. <code>qwen2.5-coder:7b</code>).</li>
+<li><strong>vLLM</strong> is the same — any open model served via its OpenAI server.</li>
+<li>For very small models (≤3B), expect low-quality tags and<br />
+<code>value_score</code>. The heuristic provider is usually more useful.</li>
+</ul>
+<h2 id="7-multi-user-stars">7. Multi-user stars</h2>
+<p>The DB is keyed on <code>id</code> (GitHub's global repo id) which is unique across<br />
+the entire GitHub instance — so the same repo starred by two users in<br />
+the same database would collide. To support multiple users:</p>
+<ul>
+<li>Add a <code>user</code> column to <code>repositories</code> and <code>analyses</code>.</li>
+<li>Make <code>repositories.UNIQUE(full_name)</code> → <code>UNIQUE(user, full_name)</code>.</li>
+<li>Update <code>analyzer.analyze_one</code> and <code>find_similar</code> to filter by user.</li>
+</ul>
+<p>This is the most invasive of the listed extensions; the rest are<br />
+self-contained.</p>
+<h2 id="8-talking-to-github-enterprise">8. Talking to GitHub Enterprise</h2>
+<p>Set <code>github.base_url</code> to your enterprise host<br />
+(<code>https://github.acme.com/api/v3</code>):</p>
+<div class="highlight"><pre><span></span><code><span class="nt">github</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">base_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://github.acme.com/api/v3</span>
+</code></pre></div>
+
+<p>The client doesn't assume github.com anywhere except in error messages.</p>
+<h2 id="9-cross-repo-auto-sync-push-dataoutput-sister-repo">9. Cross-repo auto-sync (push <code>data/output/</code> → sister repo)</h2>
+<p>Once <code>gsa report</code> runs in CI, you usually want the generated Markdown to<br />
+end up in a public, read-only sister repository such as<br />
+<code>csxo/csxo-stars-analysis</code>. The repository ships with<br />
+<code>.github/workflows/sync-to-repo-b.yml</code> and <code>.github/scripts/sync_to_repo_b.py</code><br />
+that do this via the Contents API — no <code>git push</code>, no PAT scope on Repo A.</p>
+<p>Enable it in three steps:</p>
+<ol>
+<li><strong>Generate a fine-grained PAT</strong></li>
+</ol>
+<p>Go to <a href="https://github.com/settings/tokens?type=beta">https://github.com/settings/tokens?type=beta</a> and create a token<br />
+   with these settings:</p>
+<ul>
+<li>Resource owner: <strong>only</strong> the account that owns the target repo</li>
+<li>Repository access: <strong>only</strong> the target repo (e.g. <code>csxo/csxo-stars-analysis</code>)</li>
+<li>Permissions → Repository → <strong>Contents: Read and write</strong></li>
+</ul>
+<blockquote>
+<p>Classic tokens are fine too, but a fine-grained token limits blast<br />
+radius if it ever leaks.</p>
+</blockquote>
+<ol>
+<li><strong>Add it as a Secret on Repo A</strong></li>
+</ol>
+<p><code>Repo A → Settings → Secrets and variables → Actions → New repository secret</code></p>
+<ul>
+<li>Name: <code>SYNC_PAT</code></li>
+<li>
+<p>Value: the token from step 1</p>
+</li>
+<li>
+<p><strong>(Optional) Override the target</strong></p>
+</li>
+</ul>
+<p>The sync defaults to <code>csxo/csxo-stars-analysis</code>. To change it, set a<br />
+<em>variable</em> (not a secret) called <code>SYNC_TARGET_REPO</code> in the same panel —<br />
+   e.g. <code>yourname/your-stars-analysis</code>.</p>
+<p>That's it. The next time <code>Analyze Stars</code> completes, <code>Sync to Repo B</code><br />
+runs automatically — and you can also trigger it manually from the<br />
+Actions tab.</p>
+<h3 id="how-the-sync-works">How the sync works</h3>
+<ul>
+<li><code>analyze-stars.yml</code> runs (now on a 6-hour schedule plus manual).</li>
+<li>On success, <code>sync-to-repo-b.yml</code> triggers via <code>workflow_run</code>.</li>
+<li>It downloads the <code>stars-report</code> artifact, then runs<br />
+<code>python .github/scripts/sync_to_repo_b.py data/output &lt;target&gt;</code>.</li>
+<li>The script reads the <strong>remote git tree</strong> in one API call, computes the<br />
+<strong>git blob SHA</strong> for every local file, and only <code>PUT</code>/<code>DELETE</code>s the<br />
+  diff. A typical week (a handful of new stars) produces 5–10 commits,<br />
+  not 700.</li>
+<li>The script auto-skips paths whose first segment matches<br />
+<code>.git,LICENSE,LICENSE_CN.md,README.md,README_CN.md</code> so the hand-edited<br />
+  top-level files on Repo B are preserved.</li>
+</ul>
+<h3 id="what-about-real-time-star-event-triggers">What about real-time star-event triggers?</h3>
+<p>GitHub Actions does not expose <code>star.created</code> / <code>star.deleted</code> events as<br />
+workflow triggers (they only fire on webhooks). Your options:</p>
+<ul>
+<li><strong>6-hour cron</strong> (what's shipped — best effort / balance).</li>
+<li><strong>GitHub App</strong> that subscribes to <code>star</code> events and calls<br />
+<code>POST /repos/{o}/{r}/dispatches</code> → workflow with<br />
+<code>on: repository_dispatch</code>.</li>
+<li><strong>Local cron</strong> that runs <code>gsa sync &amp;&amp; gsa analyze &amp;&amp; gsa report</code> and<br />
+  then pushes <code>data/output/</code> to Repo B.</li>
+</ul>
+<p>For most personal stars dashboards the built-in 6-hour cron is plenty.</p>
+    </article>
+  </div>
+  <footer>
+    Project
+  </footer>
+</body>
+</html>

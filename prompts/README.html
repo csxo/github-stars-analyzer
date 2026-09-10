@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Readme</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/[email protected]/dist/css/github-markdown.min.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; }
+  .page { max-width: 980px; margin: 0 auto; padding: 24px; }
+  .topbar {
+    background: #f6f8fa; border-bottom: 1px solid #d0d7de;
+    padding: 8px 16px; display: flex; justify-content: space-between; align-items: center;
+    font-size: 14px;
+  }
+  .topbar a { color: #0969da; text-decoration: none; }
+  .topbar a:hover { text-decoration: underline; }
+  .lang-switch a { margin-left: 12px; }
+  .lang-switch a.active { font-weight: 600; color: #24292f; }
+  .markdown-body { background: #fff; padding: 32px; border: 1px solid #d0d7de; border-radius: 6px; }
+  .markdown-body h1 { border-bottom: 1px solid #d0d7de; padding-bottom: 8px; }
+  .markdown-body pre { background: #f6f8fa; padding: 16px; border-radius: 6px; overflow: auto; }
+  .markdown-body code { background: rgba(175,184,193,0.2); padding: 0.2em 0.4em; border-radius: 3px; }
+  .markdown-body table { border-collapse: collapse; }
+  .markdown-body table th, .markdown-body table td { border: 1px solid #d0d7de; padding: 6px 13px; }
+  .markdown-body table tr:nth-child(2n) { background: #f6f8fa; }
+  footer { text-align: center; color: 0; color: #6e7781; padding: 24px; font-size: 12px; }
+  footer a { color: #0969da; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div>📚 <a href="../../">GitHub Stars Analyzer</a></div>
+    <div class="lang-switch"><a class="active" href="README.md">🇨🇳 中文</a> · <a class="" href="README_EN.md">🇬🇧 English</a></div>
+  </div>
+  <div class="page">
+    <article class="markdown-body">
+<h1 id="prompts-github-stars-analyzer">Prompts · GitHub Stars Analyzer</h1>
+<blockquote>
+<p>这是一份<strong>可移植分发包</strong>。不需要 WorkBuddy、不需要 clone 主项目、不需要 Python——只要你能跟任意一个 chat AI（Claude / GPT / Cursor / Aider / Cline / WorkBuddy）对话，就能跑出同样的结果。</p>
+<p>🇨🇳 <strong>中文版</strong>：本文 · <strong>🇬🇧 English version</strong>: <a href="./README_EN.md"><code>README_EN.md</code></a></p>
+</blockquote>
+<h2 id="_1">文件清单</h2>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>用途</th>
+<th>适用对象</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="./agent.md"><code>agent.md</code></a> / <a href="./agent_EN.md"><code>agent_EN.md</code></a></td>
+<td>完整 agent 定义：角色、工具、流程、约束、失败处理</td>
+<td>任何支持 system prompt / agent instructions 的工具（Claude Code、Cursor、Aider 等）</td>
+</tr>
+<tr>
+<td><a href="./prompt-template.md"><code>prompt-template.md</code></a> / <a href="./prompt-template_EN.md"><code>prompt-template_EN.md</code></a></td>
+<td>5 个开箱即用的提示词模板（小/中/大批量 + 对比 + 自动化）</td>
+<td>任何 chat interface（直接复制粘贴）</td>
+</tr>
+<tr>
+<td><a href="./skill.md"><code>skill.md</code></a> / <a href="./skill_EN.md"><code>skill_EN.md</code></a></td>
+<td>WorkBuddy skill 定义（YAML frontmatter + 中文说明）</td>
+<td>WorkBuddy 用户</td>
+</tr>
+</tbody>
+</table>
+<h2 id="30">30 秒上手</h2>
+<h3 id="a-prompt">方案 A · 直接用 prompt 模板（最快）</h3>
+<ol>
+<li>打开 <a href="./prompt-template.md"><code>prompt-template.md</code></a></li>
+<li>选一个模板（A/B/C/D/E）</li>
+<li>把 <code>&lt;USER_OR_URL&gt;</code> 替换成实际值</li>
+<li>整段复制到 Claude / GPT / Cursor chat</li>
+<li>看结果</li>
+</ol>
+<h3 id="b-agent">方案 B · 用 agent 定义（适合反复使用）</h3>
+<p>把 <a href="./agent.md"><code>agent.md</code></a> 的内容保存为：<br />
+- <strong>Claude Code</strong> → <code>.claude/agents/github-stars-analyzer.md</code><br />
+- <strong>Cursor</strong> → Settings → Rules for AI<br />
+- <strong>Aider</strong> → <code>--system-prompt agent.md</code><br />
+- <strong>WorkBuddy</strong> → 用 <code>Skill</code> 工具加载 <a href="./skill.md"><code>skill.md</code></a><br />
+- <strong>Cline / Continue</strong> → 项目规则文件</p>
+<p>之后在该项目中说"分析 https://github.com/xxx?tab=stars"即可触发。</p>
+<h3 id="c-python">方案 C · 完整 Python 实现（生产环境）</h3>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/csxo/github-stars-analyzer
+<span class="nb">cd</span><span class="w"> </span>github-stars-analyzer
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
+
+cp<span class="w"> </span>.env.example<span class="w"> </span>.env<span class="w">  </span><span class="c1"># 填 GITHUB_TOKEN + LLM_API_KEY</span>
+cp<span class="w"> </span>config/config.yaml.example<span class="w"> </span>config/config.yaml
+
+gsa<span class="w"> </span>sync
+gsa<span class="w"> </span>analyze<span class="w"> </span>--provider<span class="w"> </span>openai_compatible<span class="w"> </span>--model<span class="w"> </span>gpt-4o-mini
+gsa<span class="w"> </span>report
+</code></pre></div>
+
+<p>特性：缓存、断点续跑、失败重试、GitHub Actions 自动化、SQLite 存储。</p>
+<h2 id="_2">输出示例</h2>
+<p>跑通后用户会得到：</p>
+<div class="highlight"><pre><span></span><code>data/output/
+├── index.md             # 总索引（分类汇总）
+├── categories/          # 每个分类一页（按价值评分降序）
+│   ├── ai-llm.md
+│   ├── 代理-网络工具.md
+│   └── ...
+└── repos/               # 每个 repo 一页详情
+    ├── openai-gpt-oss.md
+    └── ...
+</code></pre></div>
+
+<p>每页 Markdown 直接在 GitHub / VSCode / Obsidian / 任何 Markdown 浏览器渲染。</p>
+<h2 id="_3">自定义</h2>
+<p>需要扩展时：</p>
+<table>
+<thead>
+<tr>
+<th>想做的事</th>
+<th>改哪里</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>换 LLM provider（Anthropic / Gemini / Ollama）</td>
+<td><code>src/github_stars_analyzer/analyzers/llm.py</code> 加新 Provider 类</td>
+</tr>
+<tr>
+<td>加新分析字段（如 license 健康度）</td>
+<td>改 <code>models/repository.py::AnalysisResult</code> + bump <code>analysis_version</code></td>
+</tr>
+<tr>
+<td>加嵌入向量相似度</td>
+<td>加 <code>embeddings</code> 表 + 替换 <code>output/similarity.py</code></td>
+</tr>
+<tr>
+<td>加 gh-pages 自动发布</td>
+<td>加 <code>.github/workflows/deploy.yml</code></td>
+</tr>
+<tr>
+<td>加 Web UI</td>
+<td>新增 <code>web/</code> 子项目</td>
+</tr>
+</tbody>
+</table>
+<p>完整扩展指南见主项目 <a href="../EXTENDING.md"><code>EXTENDING.md</code></a>。</p>
+<h2 id="_4">关联链接</h2>
+<ul>
+<li>主项目实现：<a href="https://github.com/csxo/github-stars-analyzer">https://github.com/csxo/github-stars-analyzer</a></li>
+<li>演示输出（csxo 的 678 stars）：<a href="https://github.com/csxo/csxo-stars-analysis">https://github.com/csxo/csxo-stars-analysis</a></li>
+<li>架构详解：主项目 <a href="../ARCHITECTURE.md"><code>ARCHITECTURE.md</code></a></li>
+</ul>
+    </article>
+  </div>
+  <footer>
+    Project
+  </footer>
+</body>
+</html>

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Readme</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/[email protected]/dist/css/github-markdown.min.css">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; }
+  .page { max-width: 980px; margin: 0 auto; padding: 24px; }
+  .topbar {
+    background: #f6f8fa; border-bottom: 1px solid #d0d7de;
+    padding: 8px 16px; display: flex; justify-content: space-between; align-items: center;
+    font-size: 14px;
+  }
+  .topbar a { color: #0969da; text-decoration: none; }
+  .topbar a:hover { text-decoration: underline; }
+  .lang-switch a { margin-left: 12px; }
+  .lang-switch a.active { font-weight: 600; color: #24292f; }
+  .markdown-body { background: #fff; padding: 32px; border: 1px solid #d0d7de; border-radius: 6px; }
+  .markdown-body h1 { border-bottom: 1px solid #d0d7de; padding-bottom: 8px; }
+  .markdown-body pre { background: #f6f8fa; padding: 16px; border-radius: 6px; overflow: auto; }
+  .markdown-body code { background: rgba(175,184,193,0.2); padding: 0.2em 0.4em; border-radius: 3px; }
+  .markdown-body table { border-collapse: collapse; }
+  .markdown-body table th, .markdown-body table td { border: 1px solid #d0d7de; padding: 6px 13px; }
+  .markdown-body table tr:nth-child(2n) { background: #f6f8fa; }
+  footer { text-align: center; color: 0; color: #6e7781; padding: 24px; font-size: 12px; }
+  footer a { color: #0969da; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div>📚 <a href="../../">GitHub Stars Analyzer</a></div>
+    <div class="lang-switch"><a class="" href="README.md">🇨🇳 中文</a> · <a class="active" href="README_EN.md">🇬🇧 English</a></div>
+  </div>
+  <div class="page">
+    <article class="markdown-body">
+<h1 id="prompts-github-stars-analyzer">Prompts · GitHub Stars Analyzer</h1>
+<blockquote>
+<p>A <strong>portable distribution bundle</strong>. No WorkBuddy, no cloning the main project, no Python required — anyone who can talk to any chat AI (Claude / GPT / Cursor / Aider / Cline / WorkBuddy) can produce the same result.</p>
+<p><strong>中文版本</strong>：<a href="./README.md"><code>README.md</code></a> · <strong>English version</strong>: this file.</p>
+</blockquote>
+<h2 id="files">Files</h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Purpose</th>
+<th>Audience</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="./agent.md"><code>agent.md</code></a> / <a href="./agent_EN.md"><code>agent_EN.md</code></a></td>
+<td>Full agent definition: role, tools, workflow, constraints, failure handling</td>
+<td>Any tool that supports system prompt / agent instructions (Claude Code, Cursor, Aider, etc.)</td>
+</tr>
+<tr>
+<td><a href="./prompt-template.md"><code>prompt-template.md</code></a> / <a href="./prompt-template_EN.md"><code>prompt-template_EN.md</code></a></td>
+<td>5 ready-to-use prompt templates (small / medium / large batch + comparison + automation)</td>
+<td>Any chat interface (copy &amp; paste)</td>
+</tr>
+<tr>
+<td><a href="./skill.md"><code>skill.md</code></a> / <a href="./skill_EN.md"><code>skill_EN.md</code></a></td>
+<td>WorkBuddy skill definition (YAML frontmatter + body)</td>
+<td>WorkBuddy users</td>
+</tr>
+</tbody>
+</table>
+<h2 id="30-second-quickstart">30-second quickstart</h2>
+<h3 id="option-a-prompt-template-fastest">Option A · Prompt template (fastest)</h3>
+<ol>
+<li>Open <a href="./prompt-template.md"><code>prompt-template.md</code></a> (or the EN version)</li>
+<li>Pick a template (A / B / C / D / E)</li>
+<li>Replace <code>&lt;USER_OR_URL&gt;</code> with a real value</li>
+<li>Paste the whole block into Claude / GPT / Cursor chat</li>
+<li>Done</li>
+</ol>
+<h3 id="option-b-agent-definition-for-repeated-use">Option B · Agent definition (for repeated use)</h3>
+<p>Save <a href="./agent.md"><code>agent.md</code></a> content as:<br />
+- <strong>Claude Code</strong> → <code>.claude/agents/github-stars-analyzer.md</code><br />
+- <strong>Cursor</strong> → Settings → Rules for AI<br />
+- <strong>Aider</strong> → <code>--system-prompt agent.md</code><br />
+- <strong>WorkBuddy</strong> → use the <code>Skill</code> tool to load <a href="./skill.md"><code>skill.md</code></a><br />
+- <strong>Cline / Continue</strong> → project rules file</p>
+<p>After that, in that project, just say "analyze https://github.com/xxx?tab=stars" and it will trigger.</p>
+<h3 id="option-c-full-python-implementation-production">Option C · Full Python implementation (production)</h3>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/csxo/github-stars-analyzer
+<span class="nb">cd</span><span class="w"> </span>github-stars-analyzer
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
+
+cp<span class="w"> </span>.env.example<span class="w"> </span>.env<span class="w">  </span><span class="c1"># fill in GITHUB_TOKEN + LLM_API_KEY</span>
+cp<span class="w"> </span>config/config.yaml.example<span class="w"> </span>config/config.yaml
+
+gsa<span class="w"> </span>sync
+gsa<span class="w"> </span>analyze<span class="w"> </span>--provider<span class="w"> </span>openai_compatible<span class="w"> </span>--model<span class="w"> </span>gpt-4o-mini
+gsa<span class="w"> </span>report
+</code></pre></div>
+
+<p>Features: caching, resume, retry, GitHub Actions automation, SQLite storage.</p>
+<h2 id="output-example">Output example</h2>
+<p>After a successful run the user gets:</p>
+<div class="highlight"><pre><span></span><code>data/output/
+├── index.md             # master index (category overview)
+├── categories/          # one page per category (sorted by value score)
+│   ├── ai-llm.md
+│   ├── 代理-网络工具.md
+│   └── ...
+└── repos/               # one detail page per repo
+    ├── openai-gpt-oss.md
+    └── ...
+</code></pre></div>
+
+<p>Every Markdown page works in GitHub / VSCode / Obsidian / any Markdown browser.</p>
+<h2 id="customization">Customization</h2>
+<p>When you need to extend:</p>
+<table>
+<thead>
+<tr>
+<th>What you want to do</th>
+<th>Where to change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Switch LLM provider (Anthropic / Gemini / Ollama)</td>
+<td>Add a new Provider class in <code>src/github_stars_analyzer/analyzers/llm.py</code></td>
+</tr>
+<tr>
+<td>Add new analysis fields (e.g. license health)</td>
+<td>Modify <code>models/repository.py::AnalysisResult</code> + bump <code>analysis_version</code></td>
+</tr>
+<tr>
+<td>Add embedding-based similarity</td>
+<td>Add <code>embeddings</code> table + replace <code>output/similarity.py</code></td>
+</tr>
+<tr>
+<td>Add gh-pages auto-publish</td>
+<td>Add <code>.github/workflows/deploy.yml</code></td>
+</tr>
+<tr>
+<td>Add a web UI</td>
+<td>New <code>web/</code> subproject</td>
+</tr>
+</tbody>
+</table>
+<p>Full extension guide: <a href="../EXTENDING.md"><code>EXTENDING.md</code></a> in the main project.</p>
+<h2 id="related-links">Related links</h2>
+<ul>
+<li>Main project implementation: <a href="https://github.com/csxo/github-stars-analyzer">https://github.com/csxo/github-stars-analyzer</a></li>
+<li>Demo output (csxo's 678 stars): <a href="https://github.com/csxo/csxo-stars-analysis">https://github.com/csxo/csxo-stars-analysis</a></li>
+<li>Architecture deep dive: <a href="../ARCHITECTURE.md"><code>ARCHITECTURE.md</code></a> in the main project</li>
+</ul>
+<hr />
+<h2 id="_1">中英文版本对照</h2>
+<ul>
+<li>🇨🇳 中文版入口：<a href="./README.md"><code>README.md</code></a></li>
+<li>🇬🇧 English entry: this file (you are here)</li>
+<li>Both files share the same content, only the natural language differs</li>
+</ul>
+    </article>
+  </div>
+  <footer>
+    Project
+  </footer>
+</body>
+</html>
