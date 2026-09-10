@@ -185,83 +185,84 @@ def pair_href(local_path: str) -> list[tuple[str, str]]:
 # Build steps
 # ----------------------------------------------------------------------------
 
-def render_file(md_path: Path, *, depth: int, lang_pair: tuple[str, str]) -> tuple[str, str]:
-    """Render a single .md file to HTML. Returns (zh_html, en_html)."""
-    title = md_path.stem.replace("_", " ").title()
-    # Crude pair detection
+def resolve_pair(md_path: Path) -> tuple[Path | None, Path | None]:
+    """Given a .md file, return (zh_path, en_path). One may be None.
+
+    Supports both naming conventions used in this repo:
+      - prompts/:   X.md is CN,   X_EN.md is EN
+      - top-level:  X.md is EN,   X_CN.md is CN
+    """
     base = md_path.stem
     suffix = md_path.suffix
     if base.endswith("_EN"):
-        zh_stem = base[:-3]
-        zh_path = md_path.with_name(f"{zh_stem}{suffix}")
-        if not zh_path.exists():
-            # This is the EN version but no CN twin — only render EN
-            en_text = md_path.read_text(encoding="utf-8")
-            en_body = render_md(en_text)
-            rel_prefix = "../" * depth
-            switch = build_lang_switch([("zh", None), ("en", md_path.name)])
-            # Fix: actually for an EN-only file, point zh to None too
-            en_html = make_page(
-                title=title,
-                body_html=en_body,
-                lang_code="en",
-                lang_switch_items=build_lang_switch([("en", md_path.name)]),
-                home_href=rel_prefix if rel_prefix else "./",
-                home_label="GitHub Stars Analyzer",
-                footer_label="Project",
-            )
-            return ("", en_html)
-        else:
-            zh_text = zh_path.read_text(encoding="utf-8")
-            en_text = md_path.read_text(encoding="utf-8")
-            rel_prefix = "../" * depth
-            zh_html = make_page(
-                title=title,
-                body_html=render_md(zh_text),
-                lang_code="zh",
-                lang_switch_items=build_lang_switch([("zh", zh_path.name), ("en", md_path.name)]),
-                home_href=rel_prefix if rel_prefix else "./",
-            )
-            en_html = make_page(
-                title=title,
-                body_html=render_md(en_text),
-                lang_code="en",
-                lang_switch_items=build_lang_switch([("zh", zh_path.name), ("en", md_path.name)]),
-                home_href=rel_prefix if rel_prefix else "./",
-            )
-            return (zh_html, en_html)
+        return (md_path.with_name(f"{base[:-3]}{suffix}"), md_path)
+    elif base.endswith("_CN"):
+        return (md_path, md_path.with_name(f"{base[:-3]}{suffix}"))
     else:
-        # CN version — look for EN twin
-        en_path = md_path.with_name(f"{base}_EN{suffix}")
-        zh_text = md_path.read_text(encoding="utf-8")
-        rel_prefix = "../" * depth
-        if en_path.exists():
-            en_text = en_path.read_text(encoding="utf-8")
-            zh_html = make_page(
-                title=title,
-                body_html=render_md(zh_text),
-                lang_code="zh",
-                lang_switch_items=build_lang_switch([("zh", md_path.name), ("en", en_path.name)]),
-                home_href=rel_prefix if rel_prefix else "./",
-            )
-            en_html = make_page(
-                title=title,
-                body_html=render_md(en_text),
-                lang_code="en",
-                lang_switch_items=build_lang_switch([("zh", md_path.name), ("en", en_path.name)]),
-                home_href=rel_prefix if rel_prefix else "./",
-            )
-            return (zh_html, en_html)
+        en_twin = md_path.with_name(f"{base}_EN{suffix}")
+        cn_twin = md_path.with_name(f"{base}_CN{suffix}")
+        if en_twin.exists():
+            return (md_path, en_twin)
+        elif cn_twin.exists():
+            return (cn_twin, md_path)
         else:
-            # CN only
-            zh_html = make_page(
-                title=title,
-                body_html=render_md(zh_text),
-                lang_code="zh",
-                lang_switch_items=build_lang_switch([("zh", md_path.name)]),
-                home_href=rel_prefix if rel_prefix else "./",
-            )
-            return (zh_html, "")
+            return (md_path, None)
+
+
+def _to_html(md_name: str) -> str:
+    return Path(md_name).stem + ".html"
+
+
+def render_pair_to_files(zh_path: Path | None, en_path: Path | None, *, depth: int) -> None:
+    """Render a (zh, en) pair to OUT/. Either side may be None for one-language files.
+
+    Output filenames are derived from the actual zh_path / en_path stems
+    (so X_CN.md -> X_CN.html, X.md -> X.html, etc.). Language switch
+    links point at the .html siblings, not back to the .md source.
+    """
+    if not zh_path and not en_path:
+        return
+    src = zh_path or en_path
+    title = src.stem.replace("_", " ").title()
+    rel_prefix = "../" * depth
+
+    zh_html_name = _to_html(zh_path.name) if zh_path and zh_path.exists() else None
+    en_html_name = _to_html(en_path.name) if en_path and en_path.exists() else None
+
+    if zh_path and zh_path.exists():
+        zh_text = zh_path.read_text(encoding="utf-8")
+        items = [("zh", zh_html_name)]
+        if en_html_name:
+            items.append(("en", en_html_name))
+        zh_html = make_page(
+            title=title,
+            body_html=render_md(zh_text),
+            lang_code="zh",
+            lang_switch_items=build_lang_switch(items),
+            home_href=rel_prefix if rel_prefix else "./",
+        )
+        out = OUT / zh_html_name
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(zh_html, encoding="utf-8")
+        print(f"  wrote site/{zh_html_name}")
+
+    if en_path and en_path.exists():
+        en_text = en_path.read_text(encoding="utf-8")
+        items = []
+        if zh_html_name:
+            items.append(("zh", zh_html_name))
+        items.append(("en", en_html_name))
+        en_html = make_page(
+            title=title,
+            body_html=render_md(en_text),
+            lang_code="en",
+            lang_switch_items=build_lang_switch(items),
+            home_href=rel_prefix if rel_prefix else "./",
+        )
+        out = OUT / en_html_name
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(en_html, encoding="utf-8")
+        print(f"  wrote site/{en_html_name}")
 
 
 def build_landing() -> tuple[str, str]:
@@ -394,41 +395,31 @@ def main() -> None:
         (prompts_out / "index_en.html").write_text(idx_en, encoding="utf-8")
         print("  wrote site/prompts/index.html + index_en.html")
 
+        # Process each .md file (or its pair) once.
+        seen = set()
         for md in sorted(SRC_PROM.iterdir()):
             if not md.is_file() or md.suffix != ".md":
                 continue
-            base = md.stem
-            # Skip EN twins — they will be rendered when we process the CN counterpart
-            if base.endswith("_EN"):
+            if md.resolve() in seen:
                 continue
-            suffix = md.suffix
-            en_twin = md.with_name(f"{base}_EN{suffix}")
-            zh_html, en_html = render_file(md, depth=2, lang_pair=(md.name, en_twin.name if en_twin.exists() else None))
-            if zh_html:
-                (prompts_out / f"{base}.html").write_text(zh_html, encoding="utf-8")
-                print(f"  wrote site/prompts/{base}.html")
-            if en_html:
-                (prompts_out / f"{base}_EN.html").write_text(en_html, encoding="utf-8")
-                print(f"  wrote site/prompts/{base}_EN.html")
+            zh, en = resolve_pair(md)
+            if zh: seen.add(zh.resolve())
+            if en: seen.add(en.resolve())
+            render_pair_to_files(zh, en, depth=2)
 
     # 3. Top-level *.md files (ARCHITECTURE, EXTENDING, etc.)
     top_level_md = [
         p for p in REPO_ROOT.iterdir()
         if p.is_file() and p.suffix == ".md" and p.stem not in {"README", "README_CN"}
     ]
+    seen = set()
     for md in sorted(top_level_md):
-        base = md.stem
-        if base.endswith("_EN"):
-            continue  # handled via the CN counterpart
-        en_twin = md.with_name(f"{base}_EN.md")
-        suffix = md.suffix
-        zh_html, en_html = render_file(md, depth=1, lang_pair=(md.name, en_twin.name if en_twin.exists() else None))
-        if zh_html:
-            (OUT / f"{base}.html").write_text(zh_html, encoding="utf-8")
-            print(f"  wrote site/{base}.html")
-        if en_html:
-            (OUT / f"{base}_EN.html").write_text(en_html, encoding="utf-8")
-            print(f"  wrote site/{base}_EN.html")
+        if md.resolve() in seen:
+            continue
+        zh, en = resolve_pair(md)
+        if zh: seen.add(zh.resolve())
+        if en: seen.add(en.resolve())
+        render_pair_to_files(zh, en, depth=1)
 
     print("\nDone.")
 
